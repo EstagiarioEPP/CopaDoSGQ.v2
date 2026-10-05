@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { GameTheme, PlayerInfo } from '../types';
 import { Trophy, Play, Settings, FileCode2, HelpCircle, AlertCircle } from 'lucide-react';
 import { sounds } from '../sound';
+import { AcimPixelLogo } from './AcimPixelLogo';
 
 interface StartScreenProps {
   theme: GameTheme;
@@ -58,6 +59,10 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     <div className="w-full max-w-2xl mx-auto bg-slate-900/95 border-4 border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md relative overflow-hidden">
       {/* Retro Arcade Header Banner com Identidade ACIM */}
       <div className="text-center mb-6">
+        <div className="flex justify-center mb-4">
+          <AcimPixelLogo width={200} height={84} className="drop-shadow-lg hover:scale-105 transition-transform" />
+        </div>
+
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full mb-2.5">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           <span className="font-['Press_Start_2P'] text-[9px] text-emerald-400">ESTÁDIO ACIM</span>

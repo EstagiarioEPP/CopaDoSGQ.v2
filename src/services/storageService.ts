@@ -2,7 +2,7 @@ import { Question, GameTheme } from '../types';
 import { DEFAULT_QUESTIONS, PRESET_THEMES } from '../defaultQuestions';
 
 const STORAGE_KEYS = {
-  QUESTIONS: 'copa_sgq_questions_v2',
+  QUESTIONS: 'copa_sgq_questions_v3',
   THEME: 'copa_sgq_theme_v4',
   WEBHOOK: 'copa_sgq_webhook',
   PLAYED_EMAILS: 'copa_sgq_played_emails',

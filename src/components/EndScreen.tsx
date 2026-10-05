@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlayerInfo, GameAnswerRecord, GameTheme } from '../types';
-import { Share2, Check, ExternalLink } from 'lucide-react';
+import { Share2, Check } from 'lucide-react';
 import { sounds } from '../sound';
 
 interface EndScreenProps {
@@ -11,7 +11,7 @@ interface EndScreenProps {
   theme: GameTheme;
   webhookUrl: string;
   onRestart: () => void;
-  onOpenGuide: () => void;
+  onOpenGuide?: () => void;
 }
 
 export const EndScreen: React.FC<EndScreenProps> = ({
@@ -21,7 +21,6 @@ export const EndScreen: React.FC<EndScreenProps> = ({
   playerInfo,
   theme,
   webhookUrl,
-  onOpenGuide,
 }) => {
   const [copied, setCopied] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
@@ -178,17 +177,17 @@ export const EndScreen: React.FC<EndScreenProps> = ({
       {/* Webhook Status Notification if present */}
       {webhookUrl && (
         <div className="mb-6 p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span>Registro no Google Sheets:</span>
+          <span>Registro da rodada:</span>
           {webhookStatus === 'sending' && (
-            <span className="text-amber-400 flex items-center gap-1">Enviando dados...</span>
+            <span className="text-amber-400 flex items-center gap-1">Registrando pontuação...</span>
           )}
           {webhookStatus === 'success' && (
             <span className="text-emerald-400 flex items-center gap-1 font-semibold">
-              <Check className="w-3.5 h-3.5" /> Placar Gravado!
+              <Check className="w-3.5 h-3.5" /> Placar Registrado!
             </span>
           )}
           {webhookStatus === 'error' && (
-            <span className="text-rose-400">Falha ao gravar</span>
+            <span className="text-rose-400">Falha ao registrar</span>
           )}
         </div>
       )}
@@ -230,23 +229,14 @@ export const EndScreen: React.FC<EndScreenProps> = ({
         </div>
       </div>
 
-      {/* Action Buttons - Botão de jogar novamente REMOVIDO! */}
+      {/* Action Button: Copiar Resultado */}
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           onClick={handleCopyShare}
-          className="flex-1 py-3.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+          className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg"
         >
           {copied ? <Check className="w-4 h-4 text-slate-950" /> : <Share2 className="w-4 h-4" />}
           <span>{copied ? 'Resultado Copiado!' : 'Copiar Meu Resultado'}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onOpenGuide}
-          className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-        >
-          <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
-          <span>Google Sites & Sheets</span>
         </button>
       </div>
 

@@ -232,7 +232,6 @@ export const GamePage: React.FC<GamePageProps> = ({ onNavigateToAdmin }) => {
                 theme={theme}
                 webhookUrl={webhookUrl}
                 onRestart={handleRestart}
-                onOpenGuide={() => setIsGuideOpen(true)}
               />
             )}
           </>

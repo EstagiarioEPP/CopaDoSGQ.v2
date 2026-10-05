@@ -2,64 +2,64 @@ import { Question, GameTheme } from './types';
 
 export const DEFAULT_QUESTIONS: Question[] = [
   {
-    id: 'dia-1',
-    pergunta: 'Dia 1: No ciclo PDCA, qual etapa tem como objetivo checar e medir os resultados obtidos?',
+    id: 'q-rodada-1',
+    pergunta: 'Qual é o principal objetivo da metodologia 5S no ambiente de trabalho?',
     respostas: {
-      A: 'Etapa "C" (Check / Verificar)',
-      B: 'Etapa "P" (Plan / Planejar)',
-      C: 'Etapa "D" (Do / Executar)',
-      D: 'Etapa "A" (Action / Agir Corretivamente)'
-    },
-    correta: 'A',
-    explicacao: 'A etapa Check (Verificar) avalia se as metas planejadas foram atingidas através de indicadores.'
-  },
-  {
-    id: 'dia-2',
-    pergunta: 'Dia 2: Qual é o foco primordial do programa 5S no ambiente corporativo e operacional?',
-    respostas: {
-      A: 'Aumentar relatórios e burocracia diária',
-      B: 'Substituir as normas técnicas de segurança',
-      C: 'Reduzir o quadro de colaboradores',
-      D: 'Promover organização, limpeza, disciplina e segurança'
-    },
-    correta: 'D',
-    explicacao: 'O 5S cria as bases para a excelência e redução de desperdícios na rotina de trabalho.'
-  },
-  {
-    id: 'dia-3',
-    pergunta: 'Dia 3: Ao identificar uma Não Conformidade em um processo, qual atitude correta do SGQ?',
-    respostas: {
-      A: 'Apenas aplicar punição ao operador responsável',
-      B: 'Investigar a causa raiz e definir ação corretiva eficaz',
-      C: 'Ignorar o ocorrido para não atrasar a produção',
-      D: 'Esconder o desvio até a auditoria seguinte'
+      A: 'Aumentar a quantidade de documentos armazenados em cada setor.',
+      B: 'Promover organização, limpeza, padronização e disciplina no ambiente de trabalho.',
+      C: 'Eliminar todos os registros físicos da organização.',
+      D: 'Reduzir o número de colaboradores envolvidos nos processos.'
     },
     correta: 'B',
-    explicacao: 'Tratar a causa raiz impede a reincidência da falha e promove a melhoria contínua.'
+    explicacao: 'O 5S tem como foco promover organização, limpeza, padronização e disciplina para garantir excelência e segurança.'
   },
   {
-    id: 'dia-4',
-    pergunta: 'Dia 4: O que significa a sigla SGQ dentro de uma organização?',
+    id: 'q-rodada-2',
+    pergunta: 'Um colaborador precisa localizar um documento atualizado, mas encontra diversas versões salvas em pastas diferentes. Qual prática contribui para evitar esse problema?',
     respostas: {
-      A: 'Setor Geral de Quantificação',
-      B: 'Supervisão Global de Qualificação',
-      C: 'Sistema de Gestão da Qualidade',
-      D: 'Sindicato Geral dos Químicos'
+      A: 'Salvar uma cópia em cada computador para facilitar o acesso.',
+      B: 'Utilizar somente documentos impressos.',
+      C: 'Estabelecer critérios de identificação, armazenamento, controle e atualização das informações.',
+      D: 'Permitir que cada colaborador altere livremente os documentos.'
     },
     correta: 'C',
-    explicacao: 'SGQ (Sistema de Gestão da Qualidade) estabelece políticas e objetivos para satisfação do cliente.'
+    explicacao: 'O controle adequado da informação documentada define critérios claros de identificação, armazenamento e controle de versões.'
   },
   {
-    id: 'dia-5',
-    pergunta: 'Dia 5: Segundo a norma ISO 9001, qual destes princípios de gestão é essencial?',
+    id: 'q-rodada-3',
+    pergunta: 'Na metodologia 5S, qual senso está relacionado à manutenção dos bons hábitos e ao cumprimento contínuo dos padrões estabelecidos?',
     respostas: {
-      A: 'Foco no cliente e melhoria contínua dos processos',
-      B: 'Priorizar velocidade sem checagem de conformidade',
-      C: 'Centralização extrema sem participação da equipe',
-      D: 'Eliminação de registros e evidências de auditoria'
+      A: 'Seiri – Senso de utilização.',
+      B: 'Seiton – Senso de organização.',
+      C: 'Seiso – Senso de limpeza.',
+      D: 'Shitsuke – Senso de disciplina.'
+    },
+    correta: 'D',
+    explicacao: 'O Shitsuke (disciplina) visa manter os bons hábitos e a conformidade contínua com os padrões de trabalho.'
+  },
+  {
+    id: 'q-rodada-4',
+    pergunta: 'O que caracteriza uma não conformidade no Sistema de Gestão da Qualidade?',
+    respostas: {
+      A: 'Uma situação em que um requisito estabelecido não foi atendido.',
+      B: 'Uma sugestão de melhoria apresentada por um colaborador.',
+      C: 'Uma atividade realizada dentro do prazo previsto.',
+      D: 'Uma mudança planejada em determinado processo.'
     },
     correta: 'A',
-    explicacao: 'O foco no cliente e a melhoria contínua orientam todas as diretrizes da ISO 9001.'
+    explicacao: 'Uma não conformidade ocorre quando um requisito especificado ou esperado deixa de ser atendido.'
+  },
+  {
+    id: 'q-rodada-5',
+    pergunta: 'Após identificar uma não conformidade, a equipe decide corrigir imediatamente o problema. Isso significa necessariamente que a causa foi eliminada?',
+    respostas: {
+      A: 'Sim, toda correção elimina automaticamente a causa do problema.',
+      B: 'Sim, desde que a correção seja registrada no sistema.',
+      C: 'Não, corrigir o problema não significa necessariamente eliminar sua causa.',
+      D: 'Não, pois nenhuma não conformidade pode ser corrigida imediatamente.'
+    },
+    correta: 'C',
+    explicacao: 'A correção resolve apenas a falha pontual imediata, enquanto a ação corretiva atua na eliminação da causa raiz.'
   }
 ];
 
