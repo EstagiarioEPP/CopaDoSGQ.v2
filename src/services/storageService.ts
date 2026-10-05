@@ -8,6 +8,8 @@ const STORAGE_KEYS = {
   PLAYED_EMAILS: 'copa_sgq_played_emails',
 };
 
+export const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxqrWZt9-0r3TvJzI8yTTzkiULnTcxIulZsUTH6oB0tFlf_lkAc0K0SbXcosq6Cnqc/exec';
+
 const DATA_UPDATED_EVENT = 'copa_sgq_data_updated';
 
 export const storageService = {
@@ -70,10 +72,14 @@ export const storageService = {
 
   getWebhookUrl(): string {
     try {
-      return localStorage.getItem(STORAGE_KEYS.WEBHOOK) || '';
+      const saved = localStorage.getItem(STORAGE_KEYS.WEBHOOK);
+      if (saved && saved.trim() && saved.trim().startsWith('http')) {
+        return saved.trim();
+      }
     } catch {
-      return '';
+      return DEFAULT_WEBHOOK_URL;
     }
+    return DEFAULT_WEBHOOK_URL;
   },
 
   saveWebhookUrl(url: string): void {
