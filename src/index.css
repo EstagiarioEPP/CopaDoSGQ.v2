@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@layer utilities {
+  @keyframes bounce-subtle {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+
+  .animate-bounce-subtle {
+    animation: bounce-subtle 1.8s ease-in-out infinite;
+  }
+}
+
+/* Ensure pixel-art graphics remain crisp without anti-aliasing blur */
+svg, img, canvas {
+  shape-rendering: geometricPrecision;
+}

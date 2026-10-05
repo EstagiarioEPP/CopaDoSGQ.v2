@@ -1,0 +1,8 @@
+{
+  "name": "Remix Copa do SGQ - Pênalti Quiz 2D Retrô",
+  "description": "Minijogo arcade retrô 2D de cobrança de pênaltis para gamificação corporativa e perguntas \u0026 respostas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
