@@ -15,5 +15,5 @@ export default function App() {
     return <AdminPage onNavigateToGame={() => navigate('game')} />;
   }
 
-  return <GamePage onNavigateToAdmin={() => navigate('admin')} />;
+  return <GamePage />;
 }

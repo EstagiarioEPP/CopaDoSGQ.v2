@@ -21,6 +21,14 @@ export interface PlayerInfo {
   email: string;
 }
 
+export interface AttemptRecord {
+  name: string;
+  email: string;
+  score: number;
+  totalQuestions: number;
+  timestamp: string;
+}
+
 export interface GameAnswerRecord {
   questionId: string;
   pergunta: string;

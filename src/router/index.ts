@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 
 export type AppRoute = 'game' | 'admin';
 
+// Rota restrita da gestão (não divulgada aos jogadores)
+export const GESTOR_ROUTE_PATH = '/gestao-acim-7x4';
+
 function getRouteFromLocation(): AppRoute {
   if (typeof window === 'undefined') return 'game';
 
@@ -9,13 +12,15 @@ function getRouteFromLocation(): AppRoute {
   const hash = window.location.hash.toLowerCase();
   const search = window.location.search.toLowerCase();
 
+  // A rota /admin está explicitamente desativada e não abre o painel.
+  // Apenas a rota restrita /gestao-acim-7x4 é reconhecida.
   if (
-    pathname === '/admin' ||
-    pathname.startsWith('/admin/') ||
-    hash === '#/admin' ||
-    hash.startsWith('#/admin') ||
-    search.includes('admin=true') ||
-    search.includes('page=admin')
+    pathname === GESTOR_ROUTE_PATH ||
+    pathname.startsWith(`${GESTOR_ROUTE_PATH}/`) ||
+    hash === `#${GESTOR_ROUTE_PATH}` ||
+    hash === `#${GESTOR_ROUTE_PATH}/` ||
+    hash === '#gestao-acim-7x4' ||
+    search.includes('gestao-acim-7x4')
   ) {
     return 'admin';
   }
@@ -41,13 +46,12 @@ export function useRouter() {
   }, []);
 
   const navigate = (to: 'game' | 'admin' | string) => {
-    const targetPath = to === 'admin' ? '/admin' : '/';
+    const targetPath = to === 'admin' ? GESTOR_ROUTE_PATH : '/';
     if (window.location.pathname !== targetPath) {
       window.history.pushState({}, '', targetPath);
     }
-    // Also clear hash if needed
-    if (window.location.hash.includes('admin') && to === 'game') {
-      window.location.hash = '';
+    if (to === 'game' && window.location.hash) {
+      window.history.replaceState({}, '', '/');
     }
     setRoute(getRouteFromLocation());
   };

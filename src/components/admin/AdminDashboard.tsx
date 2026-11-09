@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Question, GameTheme, Corner } from '../../types';
+import { Question, GameTheme, Corner, AttemptRecord } from '../../types';
 import { PRESET_THEMES, DEFAULT_QUESTIONS } from '../../defaultQuestions';
 import { storageService } from '../../services/storageService';
 import { generateStandaloneHtml } from '../../exportStandaloneHtml';
@@ -36,7 +36,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateToGame
   const [questions, setQuestions] = useState<Question[]>(() => storageService.getQuestions());
   const [theme, setTheme] = useState<GameTheme>(() => storageService.getTheme());
   const [webhookUrl, setWebhookUrl] = useState<string>(() => storageService.getWebhookUrl());
-  const [playedEmails, setPlayedEmails] = useState<string[]>(() => storageService.getPlayedEmails());
+  const [attempts, setAttempts] = useState<AttemptRecord[]>(() => storageService.getAttempts());
 
   // UI state
   const [activeTab, setActiveTab] = useState<'questions' | 'theme' | 'sheets' | 'export' | 'players'>('questions');
@@ -54,7 +54,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateToGame
       setQuestions(storageService.getQuestions());
       setTheme(storageService.getTheme());
       setWebhookUrl(storageService.getWebhookUrl());
-      setPlayedEmails(storageService.getPlayedEmails());
+      setAttempts(storageService.getAttempts());
     });
   }, []);
 
@@ -276,12 +276,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateToGame
     URL.revokeObjectURL(url);
   };
 
-  // Clear played emails
+  // Clear attempts / played records
   const handleClearPlayedEmails = () => {
-    if (confirm('Deseja limpar todos os e-mails registrados? Isso permitirá que os colaboradores joguem novamente.')) {
+    if (confirm('Deseja limpar todos os registros de tentativas? Isso permitirá que os colaboradores joguem novamente.')) {
       sounds.playBlip();
       storageService.clearPlayedEmails();
-      setPlayedEmails([]);
+      setAttempts([]);
     }
   };
 
@@ -437,7 +437,7 @@ function doGet(e) {
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>Tentativas ({playedEmails.length})</span>
+            <span>Tentativas ({attempts.length})</span>
           </button>
         </div>
       </div>
@@ -826,42 +826,75 @@ function doGet(e) {
               <div>
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <Users className="w-4 h-4 text-amber-400" />
-                  <span>Colaboradores que já Jogaram ({playedEmails.length})</span>
+                  <span>Tentativas Registradas ({attempts.length})</span>
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  O jogo bloqueia novas tentativas no mesmo e-mail para garantir a regra de tentativa única por rodada.
+                  Histórico de jogadores que concluíram a rodada, pontuação obtida e controle de tentativa única por e-mail.
                 </p>
               </div>
 
-              {playedEmails.length > 0 && (
+              {attempts.length > 0 && (
                 <button
                   type="button"
                   onClick={handleClearPlayedEmails}
                   className="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Liberar Todos os E-mails para Jogar Novamente</span>
+                  <span>Liberar Todas as Tentativas para Jogar Novamente</span>
                 </button>
               )}
             </div>
 
-            {playedEmails.length === 0 ? (
+            {attempts.length === 0 ? (
               <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400">
-                Nenhum colaborador registrado ainda nesta rodada.
+                Nenhuma tentativa registrada ainda nesta rodada.
               </div>
             ) : (
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-3 max-h-64 overflow-y-auto space-y-1.5">
-                {playedEmails.map((email, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-900/60 text-xs text-slate-300 font-mono"
-                  >
-                    <span>{idx + 1}. {email}</span>
-                    <span className="text-[10px] text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
-                      Tentativa Realizada
-                    </span>
-                  </div>
-                ))}
+              <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+                        <th className="px-4 py-3">#</th>
+                        <th className="px-4 py-3">Nome do Jogador</th>
+                        <th className="px-4 py-3">E-mail</th>
+                        <th className="px-4 py-3 text-center">Acertos</th>
+                        <th className="px-4 py-3 text-right">Data / Hora</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {attempts.map((attempt, idx) => {
+                        const total = attempt.totalQuestions || 5;
+                        const isHigh = attempt.score >= Math.ceil(total * 0.7);
+                        return (
+                          <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
+                            <td className="px-4 py-3 text-slate-500 font-mono">{idx + 1}</td>
+                            <td className="px-4 py-3 font-semibold text-white">
+                              {attempt.name || 'Jogador Anônimo'}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-slate-400">
+                              {attempt.email}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold font-mono text-xs border ${
+                                  isHigh
+                                    ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
+                                    : 'bg-amber-950/80 text-amber-400 border-amber-500/40'
+                                }`}
+                              >
+                                ⚽ {attempt.score}/{total}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-400 font-mono text-[11px]">
+                              {attempt.timestamp}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

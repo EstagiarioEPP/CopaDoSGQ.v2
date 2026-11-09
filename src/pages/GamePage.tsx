@@ -9,11 +9,9 @@ import { GoogleSitesGuideModal } from '../components/GoogleSitesGuideModal';
 import { sounds } from '../sound';
 import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
 
-interface GamePageProps {
-  onNavigateToAdmin?: () => void;
-}
+interface GamePageProps {}
 
-export const GamePage: React.FC<GamePageProps> = ({ onNavigateToAdmin }) => {
+export const GamePage: React.FC<GamePageProps> = () => {
   // Questions and Theme loaded dynamically from storageService
   const [questions, setQuestions] = useState<Question[]>(() => storageService.getActiveQuestions());
   const [theme, setTheme] = useState<GameTheme>(() => storageService.getTheme());
@@ -170,18 +168,10 @@ export const GamePage: React.FC<GamePageProps> = ({ onNavigateToAdmin }) => {
         {questions.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center max-w-md">
             <ShieldAlert className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h2 className="text-base font-bold text-white mb-2">Nenhuma pergunta ativa encontrada</h2>
-            <p className="text-xs text-slate-400 mb-4">
-              Ative ou cadastre perguntas no painel administrativo para iniciar o jogo.
+            <h2 className="text-base font-bold text-white mb-2">Aguardando início da rodada</h2>
+            <p className="text-xs text-slate-400">
+              As perguntas da rodada estão sendo preparadas pela organização. Em breve o jogo estará disponível!
             </p>
-            {onNavigateToAdmin && (
-              <button
-                onClick={onNavigateToAdmin}
-                className="px-4 py-2 bg-amber-400 text-slate-950 font-bold rounded-xl text-xs"
-              >
-                Acessar Administração
-              </button>
-            )}
           </div>
         ) : (
           <>
@@ -244,18 +234,6 @@ export const GamePage: React.FC<GamePageProps> = ({ onNavigateToAdmin }) => {
           <span>{theme.title} · Pênalti dos 4 Cantos do Gol</span>
           <div className="flex items-center gap-3">
             <span>Google Sites & Google Sheets Ready</span>
-            {onNavigateToAdmin && (
-              <>
-                <span aria-hidden="true">·</span>
-                <button
-                  onClick={onNavigateToAdmin}
-                  className="text-slate-600 hover:text-slate-400 transition-colors cursor-pointer text-[11px]"
-                  title="Acesso dos organizadores"
-                >
-                  Área do Gestor
-                </button>
-              </>
-            )}
           </div>
         </div>
       </footer>

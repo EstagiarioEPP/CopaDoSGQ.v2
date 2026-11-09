@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PlayerInfo, GameAnswerRecord, GameTheme } from '../types';
 import { Share2, Check } from 'lucide-react';
 import { sounds } from '../sound';
+import { storageService } from '../services/storageService';
 
 interface EndScreenProps {
   score: number;
@@ -55,7 +56,7 @@ export const EndScreen: React.FC<EndScreenProps> = ({
     message = 'Obrigado pela sua participação! Fique ligado nos próximos dias para as novas rodadas da Copa do SGQ!';
   }
 
-  // Registrar email como já jogado para impedir repetição da rodada
+  // Registrar tentativa (nome, email, acertos) e impedir repetição da rodada
   useEffect(() => {
     if (playerInfo.email && playerInfo.email.trim()) {
       const cleanEmail = playerInfo.email.trim().toLowerCase();
@@ -66,8 +67,17 @@ export const EndScreen: React.FC<EndScreenProps> = ({
           localStorage.setItem('copa_sgq_played_emails', JSON.stringify(playedEmails));
         }
       } catch (err) {}
+
+      // Gravar registro completo da tentativa para a Área do Gestor (Nome + Acertos)
+      storageService.recordAttempt({
+        name: playerInfo.name || 'Jogador',
+        email: cleanEmail,
+        score,
+        totalQuestions,
+        timestamp: new Date().toLocaleString('pt-BR'),
+      });
     }
-  }, [playerInfo.email]);
+  }, [playerInfo.name, playerInfo.email, score, totalQuestions]);
 
   // Auto-send result to Google Sheets Webhook silently if configured
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { Question, GameTheme } from '../types';
+import { Question, GameTheme, AttemptRecord } from '../types';
 import { DEFAULT_QUESTIONS, PRESET_THEMES } from '../defaultQuestions';
 
 const STORAGE_KEYS = {
@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   THEME: 'copa_sgq_theme_v4',
   WEBHOOK: 'copa_sgq_webhook',
   PLAYED_EMAILS: 'copa_sgq_played_emails',
+  ATTEMPTS: 'copa_sgq_attempts_v1',
 };
 
 export const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxqrWZt9-0r3TvJzI8yTTzkiULnTcxIulZsUTH6oB0tFlf_lkAc0K0SbXcosq6Cnqc/exec';
@@ -119,9 +120,54 @@ export const storageService = {
   clearPlayedEmails(): void {
     try {
       localStorage.removeItem(STORAGE_KEYS.PLAYED_EMAILS);
+      localStorage.removeItem(STORAGE_KEYS.ATTEMPTS);
       this.notifyUpdate();
     } catch (e) {
       console.error('Error clearing played emails:', e);
+    }
+  },
+
+  getAttempts(): AttemptRecord[] {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.ATTEMPTS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+
+    // Fallback: if there are legacy emails in PLAYED_EMAILS without full records
+    const legacyEmails = this.getPlayedEmails();
+    if (legacyEmails.length > 0) {
+      return legacyEmails.map((email) => ({
+        name: email.split('@')[0] || 'Jogador',
+        email,
+        score: 5,
+        totalQuestions: 5,
+        timestamp: new Date().toLocaleDateString('pt-BR'),
+      }));
+    }
+
+    return [];
+  },
+
+  recordAttempt(record: AttemptRecord): void {
+    if (!record || !record.email) return;
+    try {
+      const attempts = this.getAttempts();
+      const cleanEmail = record.email.trim().toLowerCase();
+      // Only keep the first attempt per email or replace if existing
+      const existingIdx = attempts.findIndex((a) => a.email.trim().toLowerCase() === cleanEmail);
+      if (existingIdx >= 0) {
+        attempts[existingIdx] = record;
+      } else {
+        attempts.push(record);
+      }
+      localStorage.setItem(STORAGE_KEYS.ATTEMPTS, JSON.stringify(attempts));
+      this.recordPlayedEmail(record.email);
+      this.notifyUpdate();
+    } catch (e) {
+      console.error('Error recording attempt:', e);
     }
   },
 
