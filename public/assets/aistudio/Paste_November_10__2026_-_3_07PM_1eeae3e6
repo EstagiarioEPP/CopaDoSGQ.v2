@@ -1,0 +1,1202 @@
+# PROJETO COPA DO SGQ — IMPLEMENTAÇÃO DA COMPETIÇÃO DE NOVEMBRO DE 2026
+
+Quero evoluir o projeto atual da Copa do SGQ, adicionando um sistema de competição por dias, autenticação dos participantes, banco de perguntas, eliminação progressiva e apuração centralizada.
+
+**ATENÇÃO: ESTE PROJETO JÁ ESTÁ PRONTO VISUALMENTE E FUNCIONANDO. NÃO QUERO RECRIAR O JOGO. QUERO EVOLUIR SUA ESTRUTURA SEM PERDER O TRABALHO JÁ REALIZADO.**
+
+Leia todas as instruções antes de começar a modificar qualquer arquivo.
+
+---
+
+# 1. CONTEXTO DO PROJETO ATUAL
+
+O projeto é um jogo de pênaltis em estilo futebol retrô/pixel art, desenvolvido para a gamificação interna do Sistema de Gestão da Qualidade (SGQ) da ACIM — Associação Comercial e Empresarial de Maringá.
+
+Tecnologias e estrutura atuais:
+
+- React;
+- Vite;
+- TypeScript;
+- Projeto conectado ao GitHub;
+- Hospedagem atual no Vercel;
+- Repositório GitHub: `EstagiarioEPP/CopaDoSGQ.v2`;
+- Integração já existente com Google Apps Script e Google Sheets para registrar resultados.
+
+O jogo já possui:
+
+- Tela inicial;
+- Campo de futebol e goleiro em pixel art;
+- Animação dos chutes e defesas;
+- Sons;
+- Perguntas com quatro alternativas;
+- Sistema de pontuação;
+- Tela de encerramento;
+- Área do Gestor;
+- Aba de tentativas;
+- Integração automática com Google Sheets.
+
+O funcionamento visual e as animações dos pênaltis estão excelentes. Devem ser preservados integralmente.
+
+## 1.1. Versão de segurança
+
+Já existe uma branch de segurança no GitHub:
+
+`versao-estavel-antes-das-rodadas`
+
+Ela representa a versão estável anterior às mudanças.
+
+Não modifique essa branch.
+
+Faça o desenvolvimento em uma branch separada, com o nome:
+
+`desenvolvimento-rodadas-2026`
+
+Essa nova branch deve partir da `main`.
+
+Não faça push diretamente na `main`, não publique no Vercel e não altere a versão de produção sem minha autorização expressa.
+
+Caso a integração atual do Google AI Studio não permita garantir em qual branch as alterações serão enviadas, interrompa antes de realizar o push e explique como devo proceder.
+
+## 1.2. Regra principal de preservação
+
+Não refaça o projeto.
+
+Não troque React, Vite ou TypeScript.
+
+Não crie outro projeto.
+
+Não altere a identidade visual.
+
+Não substitua imagens ou elementos gráficos existentes.
+
+Não redesenhe a logo da ACIM.
+
+Não altere a mecânica dos pênaltis, animações, sons, goleiro, cores, tipografia ou transições.
+
+Não altere o conteúdo das perguntas e respostas fornecidas neste prompt.
+
+Preserve a responsividade para computadores e celulares.
+
+As alterações devem se concentrar na lógica da competição, autenticação, armazenamento de dados e Área do Gestor.
+
+---
+
+# 2. OBJETIVO DA NOVA COMPETIÇÃO
+
+O jogo será disponibilizado durante cinco dias:
+
+- 16 de novembro de 2026;
+- 17 de novembro de 2026;
+- 18 de novembro de 2026;
+- 19 de novembro de 2026;
+- 20 de novembro de 2026.
+
+A competição terá quatro participantes autorizados.
+
+Cada participante poderá realizar uma tentativa de cinco perguntas por dia.
+
+O banco terá exatamente 25 perguntas, distribuídas em cinco baterias de cinco perguntas, uma bateria por dia.
+
+As perguntas serão sorteadas e distribuídas automaticamente antes do início da competição, sem repetição.
+
+**Todos os participantes devem receber exatamente as mesmas cinco perguntas em cada dia, na mesma ordem.**
+
+O sistema precisa controlar automaticamente a data, a bateria correspondente, as tentativas, os pontos e as eliminações.
+
+Não quero precisar trocar perguntas manualmente, apagar e-mails, limpar registros ou reiniciar o sistema entre os dias.
+
+---
+
+# 3. AUTENTICAÇÃO E RESTRIÇÃO DOS PARTICIPANTES
+
+Esta é uma das partes mais importantes da implementação.
+
+Quero restringir a participação exclusivamente aos quatro e-mails corporativos abaixo.
+
+### Lista de participantes autorizados
+
+1. consultor12@acim.com.br
+2. escoladenegocios2@acim.com.br
+3. supervisorcomercial@acim.com.br
+4. escoladenegocios6@acim.com.br
+
+Nenhum outro usuário poderá participar da competição.
+
+## 3.1. Login com Google
+
+Implemente a autenticação utilizando o serviço oficial Google Identity Services.
+
+O jogador deverá visualizar um botão:
+
+**ENTRAR COM GOOGLE**
+
+O funcionamento esperado:
+
+1. O participante clica em "Entrar com Google".
+2. O Google apresenta a conta disponível ou permite escolher a conta corporativa.
+3. O sistema recebe e valida a identidade.
+4. O servidor verifica se o e-mail está na lista de quatro participantes autorizados.
+5. Se estiver autorizado, o participante pode prosseguir.
+6. Caso contrário, o acesso à competição é bloqueado, com uma mensagem amigável.
+
+Não quero um campo no qual qualquer pessoa possa simplesmente digitar um dos quatro e-mails para obter acesso.
+
+O e-mail deve vir da autenticação Google validada, não de um campo preenchido pelo usuário.
+
+A restrição precisa existir também no backend. Esconder elementos na interface não é suficiente.
+
+Utilize o identificador único de conta fornecido pelo Google (`sub`) para associar os registros ao mesmo usuário, além do e-mail validado.
+
+## 3.2. Cadastro do nome
+
+Mesmo com o login Google, o participante deverá informar seu nome para a apuração dos pontos.
+
+O nome deve ser obrigatório no primeiro acesso.
+
+Após o primeiro cadastro, associe o nome à conta autenticada e recupere-o automaticamente nos dias seguintes.
+
+O participante não deve conseguir alterar seu e-mail de identificação.
+
+Evite que uma mesma conta apareça com nomes diferentes na planilha.
+
+## 3.3. Comportamento de acesso
+
+Participante autorizado:
+- consegue entrar com sua conta corporativa;
+- informa seu nome no primeiro acesso;
+- consegue jogar uma vez por dia;
+- pode retornar em dias posteriores enquanto estiver na competição;
+- não consegue repetir a tentativa de um mesmo dia.
+
+Participante não autorizado:
+- não consegue iniciar o jogo;
+- não consegue consultar perguntas;
+- não consegue registrar tentativas;
+- não consegue acessar informações dos demais participantes.
+
+Não mostre a lista de e-mails autorizados na interface pública.
+
+---
+
+# 4. BANCO DE PERGUNTAS E DISTRIBUIÇÃO DIÁRIA
+
+O banco terá exatamente as 25 perguntas listadas na seção 12 deste prompt.
+
+Cada pergunta deve possuir um identificador único e os seguintes dados:
+
+- ID;
+- Tema;
+- Enunciado;
+- Alternativa A;
+- Alternativa B;
+- Alternativa C;
+- Alternativa D;
+- Resposta correta;
+- Explicação.
+
+## 4.1. Distribuição automática
+
+Embaralhe as 25 perguntas uma única vez e distribua cinco para cada dia.
+
+A distribuição deve ser equilibrada entre os temas sempre que possível.
+
+Regras:
+
+- Nenhuma pergunta poderá se repetir durante os cinco dias.
+- Cada dia terá exatamente cinco perguntas.
+- Os quatro participantes receberão a mesma bateria daquele dia.
+- A ordem das perguntas será igual para todos.
+- Atualizar ou recarregar a página não poderá gerar um novo sorteio.
+- A distribuição deve permanecer fixa durante toda a competição.
+
+O sorteio deve ser realizado uma única vez, antes do início da competição, e sua distribuição precisa ser salva no armazenamento central.
+
+Crie uma rotina segura de inicialização, que não gere um novo sorteio quando o jogo for aberto novamente.
+
+Caso seja necessário um botão de preparação na Área do Gestor, ele deverá ser utilizado uma única vez, antes da primeira tentativa, com confirmação. Depois que a competição começar, o calendário não poderá ser alterado.
+
+## 4.2. Calendário
+
+| Data | Bateria |
+|---|---|
+| 16/11/2026 | 5 questões sorteadas |
+| 17/11/2026 | 5 questões sorteadas |
+| 18/11/2026 | 5 questões sorteadas |
+| 19/11/2026 | 5 questões sorteadas |
+| 20/11/2026 | 5 questões sorteadas |
+
+O sistema deve utilizar o fuso horário `America/Sao_Paulo` para definir a data oficial da rodada.
+
+Antes de 16/11/2026, mostrar uma mensagem informando que a competição ainda não começou.
+
+Depois de 20/11/2026, informar que a competição foi encerrada.
+
+Não confie exclusivamente na data ou no horário configurado no computador do jogador. A data oficial deve ser determinada no backend.
+
+---
+
+# 5. UMA TENTATIVA POR DIA
+
+Atualmente, o sistema trata o e-mail como se ele pudesse jogar somente uma vez na competição inteira.
+
+Essa lógica precisa mudar.
+
+A nova regra será:
+
+**Uma tentativa por participante, por dia.**
+
+Exemplo:
+
+- João joga em 16/11 e faz 4/5.
+- Não consegue iniciar outra tentativa em 16/11.
+- No dia 17/11, se continuar na competição, poderá jogar novamente.
+- Faz 5/5.
+- No dia 18/11, poderá jogar novamente caso não tenha sido eliminado.
+
+O sistema deve permitir que o mesmo participante tenha até cinco registros, um em cada dia.
+
+A identificação única da tentativa deverá combinar a identidade do participante e a data da rodada.
+
+## 5.1. Proteção contra tentativas duplicadas
+
+O controle deve ser feito no backend, utilizando armazenamento central.
+
+Não utilize apenas `localStorage` para decidir se uma pessoa já jogou.
+
+O controle precisa funcionar mesmo que o participante:
+
+- atualize a página;
+- feche e abra o navegador;
+- use outro computador;
+- acesse pelo celular;
+- tente abrir várias abas;
+- tente enviar a mesma resposta mais de uma vez.
+
+Utilize mecanismos de controle de concorrência para impedir registros duplicados.
+
+Se o jogador iniciar uma tentativa e fechar a página antes de terminar, permita que ele retome a mesma tentativa no mesmo dia, preservando as respostas já registradas.
+
+Retomar uma tentativa não pode ser interpretado como uma nova tentativa.
+
+Depois que as cinco perguntas forem concluídas e a tentativa for finalizada, o participante não poderá jogar novamente naquele dia.
+
+---
+
+# 6. MODELO C — ELIMINAÇÃO PELO PIOR DESEMPENHO
+
+A competição seguirá o Modelo C.
+
+A cada dia, o participante com o menor número de acertos será eliminado.
+
+Exemplo:
+
+| Participante | Acertos |
+|---|---:|
+| João | 5 |
+| Maria | 4 |
+| Carlos | 3 |
+| Ana | 2 |
+
+Nesse exemplo, Ana é eliminada.
+
+Os demais continuam para a próxima rodada.
+
+## 6.1. Regras de eliminação
+
+- Somente um participante poderá ser eliminado por dia.
+- Será eliminado o participante com o menor número de acertos da rodada.
+- Caso haja empate na menor pontuação, ninguém será eliminado naquele dia.
+- Em caso de empate, todos os empatados continuam para a próxima rodada.
+- A pontuação diária será registrada independentemente da eliminação.
+- Os eliminados não poderão jogar nos dias seguintes.
+- A situação de cada participante deve ficar registrada no sistema.
+
+Se um participante não fizer a tentativa até o encerramento oficial daquele dia, sua pontuação na rodada será considerada zero para a classificação daquele dia.
+
+Isso evita que alguém simplesmente deixe de jogar para adiar a eliminação.
+
+## 6.2. Processamento automático
+
+Quando todos os participantes ainda ativos concluírem sua tentativa diária, o sistema deverá processar automaticamente a rodada e aplicar a eliminação, caso exista um único pior colocado.
+
+Caso algum participante não tenha jogado até o encerramento do dia, a rodada deverá ser finalizada com sua pontuação considerada zero.
+
+Ao iniciar a data seguinte, o backend também deverá verificar se a rodada anterior foi encerrada e processá-la antes de permitir novas tentativas.
+
+A operação de encerramento deve ser idempotente: não poderá eliminar duas pessoas ou processar a mesma rodada mais de uma vez.
+
+Não dependa de o administrador fazer contagens manuais.
+
+## 6.3. Campeão
+
+Se restar apenas um participante ativo, ele será declarado campeão.
+
+Se chegarmos ao final de 20/11/2026 com mais de um participante ativo, o vencedor será aquele que tiver a maior pontuação acumulada entre os sobreviventes.
+
+Se houver empate na pontuação acumulada, apresente o empate no painel, sem escolher um vencedor arbitrariamente.
+
+**Importante:** como o Modelo C elimina apenas uma pessoa por rodada, a duração mínima matemática será de três dias, considerando quatro participantes e uma eliminação por dia. Empates podem fazer a disputa durar até o quinto dia.
+
+Não implemente uma regra adicional de campeão automático por fazer 5/5. A regra de vitória é a descrita nesta seção.
+
+---
+
+# 7. GOOGLE SHEETS — BANCO CENTRAL DA COMPETIÇÃO
+
+A integração atual com o Google Sheets já funciona e não deve ser descartada.
+
+O endpoint atualmente utilizado pelo projeto é:
+
+https://script.google.com/macros/s/AKfycbxqrWZt9-0r3TvJzI8yTTzkiULnTcxIulZsUTH6oB0tFlf_lkAc0K0SbXcosq6Cnqc/exec
+
+Preserve a integração existente e verifique como o projeto atualmente envia os resultados antes de modificar qualquer chamada.
+
+A nova estrutura precisa utilizar o Google Sheets como armazenamento central e fonte oficial dos registros da competição.
+
+O objetivo é que todos os participantes consultem e registrem informações no mesmo banco, independentemente do navegador ou dispositivo.
+
+## 7.1. Estrutura sugerida das abas
+
+Antes de criar novas abas, inspecione a estrutura existente.
+
+Não apague abas, registros ou dados antigos.
+
+Reutilize estruturas compatíveis e crie somente o que estiver faltando.
+
+Organize os dados, preferencialmente, nas seguintes abas:
+
+### PARTICIPANTES
+
+- Identificador Google (`sub`);
+- E-mail;
+- Nome;
+- Data de cadastro;
+- Situação (ativo, eliminado ou campeão).
+
+### PERGUNTAS
+
+- ID;
+- Tema;
+- Enunciado;
+- Alternativas A, B, C e D;
+- Resposta correta;
+- Explicação.
+
+### AGENDA
+
+- Data da rodada;
+- IDs das cinco perguntas;
+- Ordem das perguntas;
+- Situação da rodada;
+- Data de geração do sorteio.
+
+### TENTATIVAS
+
+Uma linha por participante e por dia:
+
+- Identificador da tentativa;
+- Data;
+- Dia da competição;
+- Identificador Google;
+- E-mail;
+- Nome;
+- Respostas selecionadas;
+- Quantidade de acertos;
+- Situação da tentativa;
+- Data e horário de início;
+- Data e horário de conclusão.
+
+### COMPETIÇÃO
+
+- Data de cada rodada;
+- Participantes ativos;
+- Resultados;
+- Eliminado do dia;
+- Situação da rodada;
+- Campeão, quando definido.
+
+Essas abas são uma proposta de organização. Adapte-as à estrutura existente quando isso evitar duplicações, mas preserve a integridade e o histórico dos registros.
+
+## 7.2. Cálculo dos resultados
+
+O resultado oficial deverá ser calculado ou conferido no backend.
+
+Não confie na quantidade de acertos enviada pelo navegador do jogador.
+
+O jogador deve enviar as alternativas selecionadas. O backend compara essas respostas com o gabarito oficial, calcula os acertos e registra o resultado.
+
+O gabarito completo não deve ser enviado ao navegador nem ficar exposto em variáveis públicas, arquivos acessíveis ou códigos de frontend.
+
+Para manter a animação dos pênaltis, o backend poderá responder se cada alternativa selecionada está correta ou incorreta, sem revelar qual seria a alternativa correta quando o jogador errar.
+
+Preserve a mecânica visual atual.
+
+---
+
+# 8. ÁREA DO GESTOR
+
+A Área do Gestor já existe no projeto. Preserve suas funcionalidades e identidade visual.
+
+Quero que ela continue acessível diretamente por uma URL própria, sem qualquer botão ou link na interface pública do jogo.
+
+Não utilize mais a rota pública `/admin` como acesso ao painel.
+
+Crie uma rota própria, sem divulgá-la na tela inicial, na tela final, nos menus ou em qualquer outra parte pública.
+
+Exemplo de formato:
+
+`/painel-copa-acim-2026`
+
+Pode utilizar outra rota semelhante.
+
+**A URL não é uma forma de autenticação.** O acesso deve ser realmente protegido.
+
+## 8.1. Administrador exclusivo
+
+Somente eu devo ter acesso à Área do Gestor.
+
+Crie uma configuração separada para o e-mail do administrador:
+
+`ADMIN_EMAIL = "PREENCHER_COM_MEU_EMAIL"`
+
+Não invente o e-mail do administrador. Deixe um local claramente identificado para que eu possa preenchê-lo posteriormente.
+
+O administrador será autenticado com o mesmo mecanismo Google Identity Services, mas terá permissões diferentes das dos jogadores.
+
+O backend deve conferir se o e-mail autenticado corresponde ao administrador configurado.
+
+Não confunda a lista dos quatro jogadores com a lista de administradores.
+
+Um jogador autorizado não deve conseguir acessar o painel administrativo.
+
+Um usuário não autorizado não deve conseguir acessar o painel mesmo conhecendo a URL.
+
+A antiga rota `/admin` não deve continuar oferecendo acesso desprotegido.
+
+---
+
+# 9. ABA TENTATIVAS — NOVO FORMATO DE APURAÇÃO
+
+Esta alteração é importante.
+
+Quero que a aba "Tentativas" permita visualizar rapidamente o desempenho de cada colaborador em todos os dias.
+
+Em vez de apresentar apenas uma listagem de tentativas independentes, quero uma tabela no formato:
+
+**COLABORADORES X DIAS**
+
+Exemplo ilustrativo:
+
+| Colaborador | 16/11 | 17/11 | 18/11 | 19/11 | 20/11 | Total | Situação |
+|---|---:|---:|---:|---:|---:|---:|---|
+| João | 4/5 | 5/5 | 3/5 | — | — | 12 | Ativo |
+| Maria | 3/5 | 4/5 | — | — | — | 7 | Eliminada |
+| Carlos | 5/5 | 4/5 | 5/5 | 4/5 | 5/5 | 23 | Campeão |
+| Ana | 2/5 | — | — | — | — | 2 | Eliminada |
+
+Os dados acima são apenas exemplos.
+
+### Regras de apresentação
+
+- Uma linha por colaborador;
+- Uma coluna para cada dia da competição;
+- Cada célula apresenta os acertos no formato `X/5`;
+- Se não houver tentativa, apresentar `—`;
+- Coluna de total acumulado;
+- Coluna de situação atual;
+- Manter o e-mail disponível para identificação administrativa, sem prejudicar a leitura.
+
+Quero também preservar o histórico detalhado das tentativas.
+
+Portanto, mantenha uma listagem detalhada, com os registros individuais e uma coluna de data/dia, abaixo ou em uma visualização secundária.
+
+A tabela resumida e o histórico devem utilizar os mesmos dados oficiais do Google Sheets.
+
+O total acumulado deve ser calculado corretamente, sem contar duas vezes uma mesma tentativa.
+
+Destaque visualmente os eliminados e o campeão, mantendo a identidade visual do painel existente.
+
+---
+
+# 10. GRATUIDADE — REGRA INEGOCIÁVEL DO PROJETO
+
+Este projeto precisa continuar sendo gratuito.
+
+Essa é uma condição obrigatória, não uma preferência.
+
+Utilize prioritariamente:
+
+- GitHub gratuito;
+- Google AI Studio;
+- Google Identity Services;
+- Google Apps Script;
+- Google Sheets;
+- A hospedagem gratuita já utilizada, desde que compatível com as condições do respectivo serviço.
+
+**NÃO utilizar serviços pagos ou que exijam contratação para funcionar.**
+
+Não implementar dependências de:
+
+- Firebase Blaze / Cloud Functions com cobrança;
+- Supabase pago;
+- Banco de dados pago;
+- Vercel Pro;
+- APIs pagas;
+- serviços de autenticação pagos;
+- serviços externos com cobrança por requisição;
+- Gemini API paga em tempo de execução;
+- qualquer serviço que exija cartão de crédito ou habilitação de faturamento para que a competição funcione.
+
+Não adicione recursos de IA em tempo real. O jogo não precisa de inteligência artificial durante a execução.
+
+Google Apps Script e Google Sheets podem ser utilizados dentro das cotas gratuitas disponíveis.
+
+Não ultrapasse nem dependa de uma configuração que exija upgrade.
+
+Se alguma funcionalidade solicitada não puder ser implementada de forma segura e funcional dentro da arquitetura gratuita, interrompa essa parte, explique o impedimento e proponha uma alternativa gratuita. Não substitua silenciosamente por um serviço pago.
+
+Não altere a hospedagem atual nesta etapa sem minha autorização.
+
+---
+
+# 11. SEGURANÇA E BOAS PRÁTICAS
+
+A implementação deve seguir estas regras:
+
+1. Validar o token Google no backend, verificando assinatura/validade, emissor, audiência, expiração e e-mail verificado.
+2. Conferir a lista de e-mails autorizados no backend.
+3. Conferir a autorização do administrador no backend.
+4. Não confiar no e-mail, nome ou pontuação enviados diretamente pelo navegador sem validação.
+5. Não expor o gabarito completo das perguntas ao frontend.
+6. Não utilizar `localStorage` como fonte oficial das tentativas, pontuações ou eliminações.
+7. Utilizar mecanismos de concorrência para impedir tentativas duplicadas.
+8. Registrar horários e datas de acordo com `America/Sao_Paulo`.
+9. Não permitir que usuários eliminados iniciem novas rodadas.
+10. Não permitir que usuários comuns consultem dados de outros participantes.
+11. Nunca enviar tokens de acesso ou credenciais privadas ao navegador.
+12. Não inserir senhas, chaves privadas ou segredos diretamente no código público.
+13. Manter a Área do Gestor protegida mesmo se alguém descobrir sua URL.
+
+O `localStorage` poderá continuar sendo utilizado somente para preferências ou informações temporárias da interface, nunca como autoridade sobre a competição.
+
+---
+
+# 12. BANCO OFICIAL DAS 25 PERGUNTAS
+
+Este é o banco oficial de perguntas da Copa do SGQ.
+
+Cadastre os 25 itens abaixo exatamente como fornecidos.
+
+Não altere enunciados, alternativas, letras corretas ou explicações.
+
+Cada pergunta deve receber um ID fixo de Q01 a Q25.
+
+## TEMA 1 — 5S E GESTÃO DA INFORMAÇÃO
+
+### Q01. Qual é a principal finalidade do 5S em uma organização?
+
+A) Aumentar a quantidade de documentos produzidos.
+
+B) Organizar o ambiente, eliminar desperdícios e promover hábitos que favoreçam a qualidade.
+
+C) Reduzir a quantidade de colaboradores de cada setor.
+
+D) Criar novos processos administrativos.
+
+**Resposta correta: B**
+
+Explicação: O 5S busca melhorar a organização, utilização, limpeza, padronização e disciplina, contribuindo para um ambiente mais eficiente.
+
+### Q02. Um colaborador encontra três versões diferentes de um mesmo procedimento em locais distintos. Qual é o principal risco dessa situação?
+
+A) Aumento da produtividade.
+
+B) Redução do espaço de armazenamento.
+
+C) Uso de uma informação desatualizada ou incorreta.
+
+D) Facilidade para escolher a melhor versão.
+
+**Resposta correta: C**
+
+Explicação: Quando existem várias versões sem controle adequado, aumenta o risco de alguém utilizar uma informação que não está mais vigente.
+
+### Q03. Qual situação representa melhor o princípio de organização do 5S?
+
+A) Guardar materiais sem identificação para facilitar mudanças futuras.
+
+B) Manter todos os arquivos na área de trabalho, independentemente da frequência de uso.
+
+C) Organizar documentos e materiais de forma que sejam facilmente localizados quando necessários.
+
+D) Acumular materiais antigos para evitar possíveis perdas.
+
+**Resposta correta: C**
+
+Explicação: A organização busca definir lugares adequados e facilitar a localização e utilização dos recursos.
+
+## TEMA 2 — NÃO CONFORMIDADES E AÇÕES
+
+### Q04. O que é uma não conformidade?
+
+A) Uma sugestão feita por um colaborador.
+
+B) O não atendimento a um requisito estabelecido.
+
+C) Uma melhoria realizada em um processo.
+
+D) Uma atividade realizada antes do prazo.
+
+**Resposta correta: B**
+
+Explicação: Uma não conformidade ocorre quando um requisito definido não é atendido.
+
+### Q05. Um problema foi corrigido, mas a causa que o originou continua existindo. O que pode acontecer?
+
+A) O problema pode voltar a ocorrer.
+
+B) A não conformidade é automaticamente eliminada para sempre.
+
+C) O processo deixa de precisar de acompanhamento.
+
+D) O indicador relacionado deixa de ser necessário.
+
+**Resposta correta: A**
+
+Explicação: Corrigir o problema resolve a ocorrência, mas investigar e tratar sua causa ajuda a evitar que ele se repita.
+
+### Q06. Uma equipe percebe que determinado erro ocorre repetidamente. Qual atitude é mais adequada?
+
+A) Corrigir cada erro sem investigar sua origem.
+
+B) Ignorar os erros quando forem pequenos.
+
+C) Investigar as causas e definir ações para evitar a recorrência.
+
+D) Alterar o nome do processo.
+
+**Resposta correta: C**
+
+Explicação: A análise das causas permite atuar sobre a origem do problema, e não apenas sobre seus efeitos.
+
+## TEMA 3 — OBJETIVOS E INDICADORES
+
+### Q07. Para que servem os indicadores de desempenho?
+
+A) Apenas para preencher relatórios.
+
+B) Para acompanhar e avaliar o desempenho dos processos.
+
+C) Para substituir os procedimentos internos.
+
+D) Para avaliar somente o desempenho individual dos colaboradores.
+
+**Resposta correta: B**
+
+Explicação: Indicadores fornecem informações que permitem acompanhar resultados e verificar se os objetivos estão sendo alcançados.
+
+### Q08. Um setor estabeleceu como objetivo reduzir o tempo de atendimento aos associados. Qual indicador seria mais adequado?
+
+A) Número de computadores do setor.
+
+B) Quantidade de colaboradores.
+
+C) Tempo médio de atendimento.
+
+D) Número de reuniões realizadas.
+
+**Resposta correta: C**
+
+Explicação: O tempo médio de atendimento mede diretamente o aspecto relacionado ao objetivo definido.
+
+### Q09. Um indicador apresentou resultado abaixo da meta. Qual deve ser uma atitude adequada?
+
+A) Alterar a meta para que o resultado seja atingido.
+
+B) Ignorar o resultado.
+
+C) Analisar o resultado e investigar possíveis causas.
+
+D) Parar de utilizar o indicador.
+
+**Resposta correta: C**
+
+Explicação: Resultados abaixo da meta devem ser analisados para compreender as causas e avaliar a necessidade de ações.
+
+## TEMA 4 — RISCOS DA ACIM
+
+### Q10. No contexto da gestão da qualidade, o que é um risco?
+
+A) Um problema que necessariamente já aconteceu.
+
+B) O efeito da incerteza sobre os resultados esperados.
+
+C) Uma atividade realizada corretamente.
+
+D) Uma melhoria já implantada.
+
+**Resposta correta: B**
+
+Explicação: O risco está relacionado à possibilidade de algo afetar os resultados esperados, podendo gerar efeitos positivos ou negativos.
+
+### Q11. Um processo depende exclusivamente de uma pessoa que possui conhecimento específico. Por que isso pode representar um risco?
+
+A) Porque a pessoa necessariamente está cometendo uma não conformidade.
+
+B) Porque o processo pode ser prejudicado caso essa pessoa não esteja disponível.
+
+C) Porque todo processo deve ter pelo menos cinco responsáveis.
+
+D) Porque o conhecimento nunca pode ser concentrado em uma pessoa.
+
+**Resposta correta: B**
+
+Explicação: A dependência de uma única pessoa pode comprometer a continuidade do processo em situações de ausência ou indisponibilidade.
+
+### Q12. Qual das situações abaixo representa uma ação de tratamento de risco?
+
+A) Esperar o problema acontecer para decidir o que fazer.
+
+B) Identificar uma possível falha e estabelecer uma medida para reduzir sua probabilidade ou impacto.
+
+C) Retirar o risco do registro sem análise.
+
+D) Ignorar riscos considerados inconvenientes.
+
+**Resposta correta: B**
+
+Explicação: O tratamento de riscos envolve definir medidas para evitar, reduzir, compartilhar ou lidar adequadamente com seus efeitos.
+
+## TEMA 5 — MISSÃO, VISÃO, VALORES E POLÍTICA DA QUALIDADE
+
+### Q13. Qual é a principal diferença entre missão e visão?
+
+A) A missão trata do passado e a visão trata dos problemas atuais.
+
+B) A missão representa a razão de existir da organização e a visão indica onde ela deseja chegar.
+
+C) A missão apresenta os indicadores e a visão apresenta os procedimentos.
+
+D) Não existe diferença entre elas.
+
+**Resposta correta: B**
+
+Explicação: A missão está relacionada ao propósito da organização, enquanto a visão representa uma direção ou futuro desejado.
+
+### Q14. Por que os valores organizacionais são importantes no dia a dia?
+
+A) Porque orientam comportamentos e decisões dos colaboradores.
+
+B) Porque servem apenas para materiais publicitários.
+
+C) Porque substituem os procedimentos internos.
+
+D) Porque são utilizados somente pela diretoria.
+
+**Resposta correta: A**
+
+Explicação: Os valores ajudam a orientar como as pessoas devem agir e tomar decisões dentro da organização.
+
+### Q15. Qual é uma das funções da Política da Qualidade?
+
+A) Definir o salário de cada colaborador.
+
+B) Estabelecer compromissos e direcionamentos relacionados à qualidade.
+
+C) Substituir todos os procedimentos da organização.
+
+D) Determinar somente os horários de atendimento.
+
+**Resposta correta: B**
+
+Explicação: A Política da Qualidade apresenta compromissos e direcionamentos que orientam o Sistema de Gestão da Qualidade.
+
+## TEMA 6 — VISÃO SISTÊMICA E MELHORIA CONTÍNUA
+
+### Q16. O que significa ter uma visão sistêmica?
+
+A) Considerar apenas os resultados do próprio setor.
+
+B) Entender que processos e setores estão relacionados e podem influenciar uns aos outros.
+
+C) Evitar contato com outros setores.
+
+D) Centralizar todas as decisões em uma única área.
+
+**Resposta correta: B**
+
+Explicação: A visão sistêmica considera as interações entre processos, setores, pessoas e resultados.
+
+### Q17. Um setor pretende alterar uma atividade que também afeta outro departamento. Qual atitude demonstra visão sistêmica?
+
+A) Fazer a alteração sem comunicar ninguém.
+
+B) Considerar os impactos da mudança nos processos relacionados.
+
+C) Informar somente depois que a mudança estiver concluída.
+
+D) Transferir a responsabilidade para o outro setor.
+
+**Resposta correta: B**
+
+Explicação: Mudanças em um processo podem gerar impactos em outros. Avaliar essas relações ajuda a evitar problemas.
+
+### Q18. Qual situação representa melhor a melhoria contínua?
+
+A) Fazer mudanças somente quando ocorrer uma auditoria.
+
+B) Buscar constantemente oportunidades para melhorar processos e resultados.
+
+C) Manter todos os processos exatamente iguais.
+
+D) Corrigir apenas problemas considerados graves.
+
+**Resposta correta: B**
+
+Explicação: A melhoria contínua consiste na busca permanente por oportunidades de aperfeiçoamento.
+
+## TEMA 7 — GESTÃO DE RELACIONAMENTO E ATENDIMENTO
+
+### Q19. Um associado apresenta uma reclamação durante um atendimento. Qual é a postura mais adequada?
+
+A) Interromper o associado para explicar o procedimento.
+
+B) Ignorar a reclamação se ela parecer pequena.
+
+C) Ouvir, compreender a situação e buscar o encaminhamento adequado.
+
+D) Informar que reclamações devem ser feitas somente por escrito.
+
+**Resposta correta: C**
+
+Explicação: Um bom atendimento envolve escuta, compreensão da necessidade e encaminhamento adequado da demanda.
+
+### Q20. Por que é importante registrar informações relacionadas aos atendimentos?
+
+A) Apenas para aumentar a quantidade de registros da organização.
+
+B) Para possibilitar acompanhamento, rastreabilidade e melhoria dos serviços.
+
+C) Para evitar que o associado volte a entrar em contato.
+
+D) Para substituir o atendimento pessoal.
+
+**Resposta correta: B**
+
+Explicação: Os registros permitem acompanhar demandas, identificar padrões e utilizar informações para melhorar os processos.
+
+### Q21. Um associado precisa ser encaminhado para outro setor. Qual atitude contribui para uma boa experiência?
+
+A) Informar apenas que “não é neste setor”.
+
+B) Encerrar o atendimento imediatamente.
+
+C) Orientar claramente o associado sobre onde e como sua demanda será atendida.
+
+D) Pedir que ele descubra sozinho quem pode ajudá-lo.
+
+**Resposta correta: C**
+
+Explicação: Um encaminhamento claro evita retrabalho e reduz o esforço do associado para conseguir atendimento.
+
+## TEMA 8 — LGPD
+
+### Q22. Qual alternativa apresenta um exemplo de dado pessoal?
+
+A) Nome de uma pessoa.
+
+B) Nome fantasia de uma empresa.
+
+C) Número de uma sala da ACIM.
+
+D) Horário de funcionamento de um setor.
+
+**Resposta correta: A**
+
+Explicação: Dado pessoal é uma informação relacionada a uma pessoa natural identificada ou identificável.
+
+### Q23. Um colaborador possui acesso a dados de associados para executar determinada atividade. Qual prática é mais adequada?
+
+A) Compartilhar os dados com qualquer colega que solicitar.
+
+B) Utilizar os dados somente quando necessário para a finalidade autorizada.
+
+C) Copiar os dados para seu computador pessoal.
+
+D) Enviar os dados para seu e-mail pessoal como backup.
+
+**Resposta correta: B**
+
+Explicação: O acesso e uso de dados pessoais devem estar relacionados à finalidade legítima e às necessidades da atividade desempenhada.
+
+### Q24. Qual das alternativas representa um dado pessoal sensível segundo a LGPD?
+
+A) Nome completo.
+
+B) Número de telefone.
+
+C) Convicção religiosa.
+
+D) E-mail profissional.
+
+**Resposta correta: C**
+
+Explicação: A LGPD considera, entre outros, dados sobre origem racial ou étnica, religião, saúde, vida sexual e opinião política como dados pessoais sensíveis.
+
+### Q25. Um colaborador percebe que enviou por engano uma planilha contendo dados pessoais para uma pessoa que não deveria recebê-la. O que deve fazer?
+
+A) Ignorar o ocorrido se o arquivo já tiver sido enviado.
+
+B) Apagar a mensagem enviada e não informar ninguém.
+
+C) Comunicar imediatamente o ocorrido pelos canais internos responsáveis.
+
+D) Enviar outra mensagem pedindo para o destinatário ignorar o arquivo e considerar o assunto encerrado.
+
+**Resposta correta: C**
+
+Explicação: Um possível incidente envolvendo dados pessoais deve ser comunicado rapidamente para que os responsáveis possam avaliar o ocorrido e tomar as providências necessárias.
+
+---
+
+# 13. PRESERVAÇÃO DA EXPERIÊNCIA DE JOGO
+
+A experiência atual é um dos pontos fortes do projeto.
+
+Preserve:
+
+- Tela inicial;
+- Logo original da ACIM;
+- Campo de futebol;
+- Goleiro;
+- Bola;
+- Animações dos chutes;
+- Animações de defesa;
+- Efeitos de gol;
+- Sons;
+- Placar;
+- Transições;
+- Estilo pixel art;
+- Tela final;
+- Responsividade.
+
+A nova lógica de autenticação deverá ser incorporada à experiência existente de maneira natural.
+
+Não deixe a autenticação visualmente pesada ou com aparência de sistema administrativo.
+
+A tela de login deve combinar com a identidade visual da Copa do SGQ.
+
+Depois que o participante estiver autenticado, o jogo deve funcionar praticamente como funciona hoje.
+
+Não revelar a resposta correta após um erro, mantendo o comportamento atual.
+
+---
+
+# 14. ETAPAS DE IMPLEMENTAÇÃO E CUIDADOS
+
+Não implemente tudo de maneira desordenada.
+
+Antes de começar, faça uma análise completa do projeto atual.
+
+Identifique:
+- estrutura de arquivos;
+- funcionamento das tentativas;
+- armazenamento atual;
+- integração com Apps Script;
+- integração com Google Sheets;
+- funcionamento da Área do Gestor;
+- rotas existentes;
+- componentes que precisam ser modificados.
+
+Depois, implemente de maneira incremental:
+
+### ETAPA 1 — Estrutura e autenticação
+
+- Criar a autenticação Google;
+- Restringir os quatro e-mails;
+- Criar o controle de administrador;
+- Migrar o controle de identidade para o backend;
+- Manter o nome do participante vinculado à conta.
+
+### ETAPA 2 — Banco de perguntas e calendário
+
+- Cadastrar as 25 perguntas;
+- Criar IDs fixos;
+- Embaralhar e distribuir as perguntas;
+- Gerar cinco baterias;
+- Salvar a distribuição de forma permanente;
+- Garantir que todos recebam as mesmas perguntas.
+
+### ETAPA 3 — Tentativas e eliminação
+
+- Permitir uma tentativa por dia;
+- Permitir retomada de tentativa incompleta;
+- Impedir tentativas duplicadas;
+- Registrar respostas;
+- Calcular acertos no backend;
+- Aplicar eliminações automaticamente;
+- Registrar o histórico.
+
+### ETAPA 4 — Área do Gestor
+
+- Implementar a rota protegida;
+- Restringir acesso ao administrador;
+- Atualizar a aba Tentativas;
+- Criar tabela colaboradores x dias;
+- Exibir totais e situação;
+- Preservar histórico detalhado.
+
+### ETAPA 5 — Testes
+
+Executar testes completos antes de considerar a implementação finalizada.
+
+Se alguma etapa exigir uma configuração que dependa de mim, como Client ID do Google, e-mail do administrador ou configuração do Apps Script, deixe os campos preparados e forneça instruções detalhadas. Não invente valores.
+
+---
+
+# 15. INTEGRAÇÃO COM APPS SCRIPT — NÃO SIMULAR IMPLEMENTAÇÃO
+
+O projeto possui um endpoint de Apps Script que já funciona para o registro dos resultados.
+
+Entretanto, a implementação agora exige novas operações, como:
+
+- autenticar participantes;
+- consultar a bateria do dia;
+- registrar respostas;
+- conferir respostas;
+- impedir tentativas duplicadas;
+- processar eliminações;
+- consultar resultados para o administrador.
+
+Não presuma que o endpoint atual já oferece essas funcionalidades.
+
+Inspecione como a integração atual é feita e preserve seu funcionamento enquanto a nova estrutura é preparada.
+
+Se não tiver acesso ao código-fonte do projeto Apps Script, não alegue que modificou o backend.
+
+Nesse caso:
+
+1. Crie um arquivo no projeto contendo o código completo do Apps Script necessário, por exemplo `backend-apps-script/Code.gs`.
+2. Crie um documento `CONFIGURACAO_APPS_SCRIPT.md` com as instruções para aplicar a nova implementação.
+3. Explique quais funções devem ser adicionadas ou atualizadas.
+4. Preserve os registros antigos da planilha.
+5. Explique como testar uma implantação separada antes de atualizar o endpoint de produção.
+6. Informe como publicar a versão atualizada sem perder o endereço existente, se isso for tecnicamente possível.
+
+Antes de alterar a comunicação com o endpoint, teste se a aplicação consegue realmente enviar e receber as respostas necessárias.
+
+Não utilize `fetch` com `no-cors` como solução quando for necessário ler a resposta do servidor. Uma resposta opaca não permite confirmar autenticação, pontuação ou situação da tentativa.
+
+Avalie a compatibilidade entre o navegador, o CORS e o Apps Script. Se a comunicação atual não permitir uma integração segura de ida e volta, explique o problema e apresente uma solução gratuita compatível, sem substituir silenciosamente a arquitetura.
+
+Nunca simule que uma tentativa foi salva ou que uma autenticação foi validada quando o backend não confirmou a operação.
+
+---
+
+# 16. TESTES OBRIGATÓRIOS
+
+Antes de finalizar, execute ou prepare testes para os seguintes cenários:
+
+### Autenticação
+
+- Um dos quatro e-mails autorizados consegue entrar.
+- Um e-mail não autorizado é bloqueado.
+- Não é possível entrar digitando apenas um e-mail autorizado.
+- Um participante não consegue acessar a Área do Gestor.
+- Somente o e-mail administrativo configurado consegue acessar o painel.
+
+### Perguntas
+
+- Existem exatamente 25 perguntas.
+- São distribuídas cinco perguntas por dia.
+- Não há repetição entre os cinco dias.
+- Todos os participantes recebem a mesma bateria diária.
+- Atualizar a página não altera a distribuição.
+- A resposta correta não é exposta ao navegador.
+
+### Tentativas
+
+- O jogador consegue jogar uma vez no dia.
+- O mesmo jogador não consegue jogar novamente no mesmo dia.
+- No dia seguinte, um participante ativo pode jogar novamente.
+- Fechar e reabrir a página permite retomar uma tentativa incompleta.
+- Utilizar outro dispositivo não libera uma segunda tentativa.
+- Um participante eliminado não consegue continuar.
+
+### Eliminação
+
+- O menor pontuador é eliminado quando não há empate na última posição.
+- Empate na menor pontuação não elimina ninguém.
+- Participante que não joga recebe zero na rodada encerrada.
+- O encerramento da rodada não ocorre duas vezes.
+- A competição termina quando resta um participante ativo.
+- No dia 20, a classificação final considera a pontuação acumulada dos sobreviventes.
+- Empate final é identificado sem escolha arbitrária de vencedor.
+
+### Área do Gestor
+
+- Não existe link público para o painel.
+- A rota anterior `/admin` não permite acesso desprotegido.
+- A nova rota exige autenticação Google.
+- Somente o administrador configurado consegue entrar.
+- A tabela colaboradores x dias apresenta os dados corretos.
+- O total acumulado corresponde à soma dos acertos diários.
+- O histórico detalhado permanece disponível.
+
+### Integração
+
+- A pontuação registrada corresponde às respostas efetivamente enviadas.
+- Os dados ficam centralizados no Google Sheets.
+- Os registros antigos não são apagados.
+- Os dados continuam disponíveis depois de atualizar a página ou trocar de dispositivo.
+- Os resultados não são duplicados.
+
+### Integridade do jogo
+
+- Os pênaltis continuam funcionando.
+- O goleiro continua reagindo corretamente.
+- As animações e os sons permanecem.
+- A logo não sofre qualquer alteração.
+- A tela inicial e a tela final permanecem visualmente fiéis.
+- Computador e celular continuam funcionando.
+
+Execute também o build do projeto e corrija erros introduzidos pelas alterações.
+
+Não considere a integração concluída apenas porque o código compila.
+
+---
+
+# 17. DOCUMENTAÇÃO E ENTREGA
+
+Ao terminar, apresente um relatório objetivo, contendo:
+
+1. Arquivos criados.
+2. Arquivos modificados.
+3. Alterações realizadas em cada etapa.
+4. Como ficou a autenticação Google.
+5. Onde devo preencher o e-mail do administrador.
+6. Onde devo configurar o Client ID do Google.
+7. Como ficou a estrutura do Google Sheets.
+8. Se o código do Apps Script precisará ser atualizado manualmente.
+9. Como testar a integração sem comprometer a produção.
+10. Como testar os cinco dias da competição.
+11. Qual é o endereço da Área do Gestor.
+12. Quais passos ainda dependem de configuração manual.
+
+Crie também um documento com instruções simples, passo a passo, para as configurações que eu precisar realizar manualmente.
+
+Não assuma que eu sou desenvolvedor. Explique configurações técnicas com instruções práticas e acessíveis.
+
+---
+
+# INSTRUÇÃO FINAL
+
+O objetivo não é criar um jogo novo.
+
+O objetivo é transformar o jogo atual em uma competição de cinco rodadas diárias, com quatro participantes autenticados, banco fixo de 25 perguntas, tentativas diárias, eliminação progressiva e apuração centralizada.
+
+**PRIORIDADE ABSOLUTA: PRESERVAR O JOGO ATUAL, MANTER TODOS OS RECURSOS GRATUITOS E GARANTIR QUE A NOVA LÓGICA FUNCIONE CORRETAMENTE.**
+
+Antes de realizar qualquer operação que possa comprometer a versão publicada ou a integração atual, pare e explique o que será alterado.
+
+Não publique em produção, não faça push para a `main` e não altere a branch de segurança sem minha autorização.

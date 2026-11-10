@@ -147,8 +147,8 @@ export const PixelGoalkeeper: React.FC<PixelGoalkeeperProps> = ({
           SGQ
         </text>
 
-        {/* Arms & Massive Goalkeeper Gloves with fluid reach */}
-        {/* Left Arm & Glove */}
+        {/* Arms & Retro Pixel Art Goalkeeper Gloves with fluid reach */}
+        {/* Left Arm & Goalkeeper Glove */}
         <g
           style={{
             transform: gloveLeftTransform,
@@ -156,15 +156,55 @@ export const PixelGoalkeeper: React.FC<PixelGoalkeeperProps> = ({
             transformOrigin: '30px 45px',
           }}
         >
+          {/* Jersey Sleeve */}
           <rect x="22" y="42" width="14" height="12" fill={jerseyColor} />
-          <rect x="14" y="46" width="10" height="14" fill="#f472b6" />
-          <rect x="2" y="42" width="16" height="22" fill="#fbbf24" stroke="#78350f" strokeWidth="2" />
-          <rect x="4" y="44" width="12" height="6" fill="#ffffff" />
-          <rect x="5" y="52" width="3" height="8" fill="#78350f" />
-          <rect x="11" y="52" width="3" height="8" fill="#78350f" />
+
+          {/* Forearm */}
+          <rect x="14" y="46" width="10" height="8" fill="#f472b6" />
+
+          {/* GLOVE: Wristband / Cuff (Punho da Luva com fecho) */}
+          <rect x="9" y="53" width="10" height="5" fill="#09090b" />
+          <rect x="10" y="54" width="8" height="3" fill="#1e293b" />
+          <rect x="12" y="54" width="5" height="3" fill="#00be98" />
+          <rect x="13" y="55" width="3" height="1" fill="#ffffff" />
+
+          {/* GLOVE: Palm & Backhand Base (Látex Branco com Contorno Retrô) */}
+          <rect x="3" y="44" width="15" height="10" fill="#09090b" />
+          <rect x="4" y="45" width="13" height="8" fill="#ffffff" />
+          <rect x="6" y="49" width="9" height="3" fill="#e2e8f0" />
+          {/* Knuckle / Punch Zone Accent */}
+          <rect x="5" y="45" width="11" height="3" fill="#00be98" />
+          <rect x="6" y="46" width="9" height="1" fill="#a7f3d0" />
+
+          {/* GLOVE: Thumb (Polegar voltado para o corpo) */}
+          <rect x="17" y="46" width="4" height="6" fill="#09090b" />
+          <rect x="17" y="47" width="3" height="4" fill="#ffffff" />
+          <rect x="18" y="48" width="2" height="2" fill="#cbd5e1" />
+          <rect x="17" y="47" width="2" height="1" fill="#00be98" />
+
+          {/* GLOVE: 4 Distinct Fingers (Dedos com formato e separação nítida) */}
+          {/* Pinky (Dedo Mínimo - lateral externa) */}
+          <rect x="2" y="41" width="4" height="6" fill="#09090b" />
+          <rect x="3" y="42" width="2" height="4" fill="#ffffff" />
+          <rect x="3" y="42" width="2" height="2" fill="#00be98" />
+
+          {/* Ring Finger (Dedo Anelar) */}
+          <rect x="6" y="38" width="4" height="8" fill="#09090b" />
+          <rect x="7" y="39" width="2" height="6" fill="#ffffff" />
+          <rect x="7" y="39" width="2" height="2" fill="#00be98" />
+
+          {/* Middle Finger (Dedo Médio - mais alto) */}
+          <rect x="10" y="36" width="4" height="10" fill="#09090b" />
+          <rect x="11" y="37" width="2" height="8" fill="#ffffff" />
+          <rect x="11" y="37" width="2" height="2" fill="#00be98" />
+
+          {/* Index Finger (Dedo Indicador) */}
+          <rect x="14" y="38" width="4" height="8" fill="#09090b" />
+          <rect x="15" y="39" width="2" height="6" fill="#ffffff" />
+          <rect x="15" y="39" width="2" height="2" fill="#00be98" />
         </g>
 
-        {/* Right Arm & Glove */}
+        {/* Right Arm & Goalkeeper Glove */}
         <g
           style={{
             transform: gloveRightTransform,
@@ -172,12 +212,52 @@ export const PixelGoalkeeper: React.FC<PixelGoalkeeperProps> = ({
             transformOrigin: '80px 45px',
           }}
         >
+          {/* Jersey Sleeve */}
           <rect x="74" y="42" width="14" height="12" fill={jerseyColor} />
-          <rect x="86" y="46" width="10" height="14" fill="#f472b6" />
-          <rect x="92" y="42" width="16" height="22" fill="#fbbf24" stroke="#78350f" strokeWidth="2" />
-          <rect x="94" y="44" width="12" height="6" fill="#ffffff" />
-          <rect x="96" y="52" width="3" height="8" fill="#78350f" />
-          <rect x="102" y="52" width="3" height="8" fill="#78350f" />
+
+          {/* Forearm */}
+          <rect x="86" y="46" width="10" height="8" fill="#f472b6" />
+
+          {/* GLOVE: Wristband / Cuff (Punho da Luva com fecho) */}
+          <rect x="91" y="53" width="10" height="5" fill="#09090b" />
+          <rect x="92" y="54" width="8" height="3" fill="#1e293b" />
+          <rect x="93" y="54" width="5" height="3" fill="#00be98" />
+          <rect x="94" y="55" width="3" height="1" fill="#ffffff" />
+
+          {/* GLOVE: Palm & Backhand Base (Látex Branco com Contorno Retrô) */}
+          <rect x="92" y="44" width="15" height="10" fill="#09090b" />
+          <rect x="93" y="45" width="13" height="8" fill="#ffffff" />
+          <rect x="95" y="49" width="9" height="3" fill="#e2e8f0" />
+          {/* Knuckle / Punch Zone Accent */}
+          <rect x="94" y="45" width="11" height="3" fill="#00be98" />
+          <rect x="95" y="46" width="9" height="1" fill="#a7f3d0" />
+
+          {/* GLOVE: Thumb (Polegar voltado para o corpo) */}
+          <rect x="89" y="46" width="4" height="6" fill="#09090b" />
+          <rect x="90" y="47" width="3" height="4" fill="#ffffff" />
+          <rect x="90" y="48" width="2" height="2" fill="#cbd5e1" />
+          <rect x="91" y="47" width="2" height="1" fill="#00be98" />
+
+          {/* GLOVE: 4 Distinct Fingers (Dedos com formato e separação nítida) */}
+          {/* Index Finger (Dedo Indicador) */}
+          <rect x="92" y="38" width="4" height="8" fill="#09090b" />
+          <rect x="93" y="39" width="2" height="6" fill="#ffffff" />
+          <rect x="93" y="39" width="2" height="2" fill="#00be98" />
+
+          {/* Middle Finger (Dedo Médio - mais alto) */}
+          <rect x="96" y="36" width="4" height="10" fill="#09090b" />
+          <rect x="97" y="37" width="2" height="8" fill="#ffffff" />
+          <rect x="97" y="37" width="2" height="2" fill="#00be98" />
+
+          {/* Ring Finger (Dedo Anelar) */}
+          <rect x="100" y="38" width="4" height="8" fill="#09090b" />
+          <rect x="101" y="39" width="2" height="6" fill="#ffffff" />
+          <rect x="101" y="39" width="2" height="2" fill="#00be98" />
+
+          {/* Pinky (Dedo Mínimo - lateral externa) */}
+          <rect x="104" y="41" width="4" height="6" fill="#09090b" />
+          <rect x="105" y="42" width="2" height="4" fill="#ffffff" />
+          <rect x="105" y="42" width="2" height="2" fill="#00be98" />
         </g>
 
         {/* Shorts */}

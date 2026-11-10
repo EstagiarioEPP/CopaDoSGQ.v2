@@ -127,6 +127,7 @@ export const storageService = {
     }
   },
 
+  // Recupera e grava tentativas por data (email + data)
   getAttempts(): AttemptRecord[] {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.ATTEMPTS);
@@ -135,19 +136,6 @@ export const storageService = {
         if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
-
-    // Fallback: if there are legacy emails in PLAYED_EMAILS without full records
-    const legacyEmails = this.getPlayedEmails();
-    if (legacyEmails.length > 0) {
-      return legacyEmails.map((email) => ({
-        name: email.split('@')[0] || 'Jogador',
-        email,
-        score: 5,
-        totalQuestions: 5,
-        timestamp: new Date().toLocaleDateString('pt-BR'),
-      }));
-    }
-
     return [];
   },
 
@@ -156,19 +144,65 @@ export const storageService = {
     try {
       const attempts = this.getAttempts();
       const cleanEmail = record.email.trim().toLowerCase();
-      // Only keep the first attempt per email or replace if existing
-      const existingIdx = attempts.findIndex((a) => a.email.trim().toLowerCase() === cleanEmail);
+      const recordDate = record.date || new Date().toISOString().slice(0, 10);
+      const normalizedRecord: AttemptRecord = {
+        ...record,
+        email: cleanEmail,
+        date: recordDate,
+      };
+
+      // Chave única: e-mail + data da rodada
+      const existingIdx = attempts.findIndex(
+        (a) => a.email.trim().toLowerCase() === cleanEmail && a.date === recordDate
+      );
+
       if (existingIdx >= 0) {
-        attempts[existingIdx] = record;
+        attempts[existingIdx] = normalizedRecord;
       } else {
-        attempts.push(record);
+        attempts.push(normalizedRecord);
       }
+
       localStorage.setItem(STORAGE_KEYS.ATTEMPTS, JSON.stringify(attempts));
-      this.recordPlayedEmail(record.email);
+      this.clearInProgressAttempt(); // limpa tentativa em andamento ao concluir
       this.notifyUpdate();
     } catch (e) {
       console.error('Error recording attempt:', e);
     }
+  },
+
+  // Suporte a retomada de tentativa no mesmo dia em caso de refresh
+  getInProgressAttempt(): {
+    email: string;
+    name: string;
+    date: string;
+    currentIndex: number;
+    score: number;
+    records: any[];
+  } | null {
+    try {
+      const saved = localStorage.getItem('copa_sgq_in_progress');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  },
+
+  saveInProgressAttempt(data: {
+    email: string;
+    name: string;
+    date: string;
+    currentIndex: number;
+    score: number;
+    records: any[];
+  }): void {
+    try {
+      localStorage.setItem('copa_sgq_in_progress', JSON.stringify(data));
+    } catch {}
+  },
+
+  clearInProgressAttempt(): void {
+    try {
+      localStorage.removeItem('copa_sgq_in_progress');
+    } catch {}
   },
 
   notifyUpdate(): void {

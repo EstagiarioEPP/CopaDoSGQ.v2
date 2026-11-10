@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 
 export type AppRoute = 'game' | 'admin';
 
-// Rota restrita da gestão (não divulgada aos jogadores)
-export const GESTOR_ROUTE_PATH = '/gestao-acim-7x4';
+// Rota restrita da gestão oficial (não divulgada aos jogadores)
+export const GESTOR_ROUTE_PATH = '/painel-copa-acim-2026';
+export const LEGACY_GESTOR_PATH = '/gestao-acim-7x4';
 
 function getRouteFromLocation(): AppRoute {
   if (typeof window === 'undefined') return 'game';
@@ -13,14 +14,16 @@ function getRouteFromLocation(): AppRoute {
   const search = window.location.search.toLowerCase();
 
   // A rota /admin está explicitamente desativada e não abre o painel.
-  // Apenas a rota restrita /gestao-acim-7x4 é reconhecida.
+  // Apenas a rota restrita /painel-copa-acim-2026 (ou legado gestao) é reconhecida.
   if (
     pathname === GESTOR_ROUTE_PATH ||
     pathname.startsWith(`${GESTOR_ROUTE_PATH}/`) ||
     hash === `#${GESTOR_ROUTE_PATH}` ||
     hash === `#${GESTOR_ROUTE_PATH}/` ||
-    hash === '#gestao-acim-7x4' ||
-    search.includes('gestao-acim-7x4')
+    hash === '#painel-copa-acim-2026' ||
+    search.includes('painel-copa-acim-2026') ||
+    pathname === LEGACY_GESTOR_PATH ||
+    hash === `#${LEGACY_GESTOR_PATH}`
   ) {
     return 'admin';
   }

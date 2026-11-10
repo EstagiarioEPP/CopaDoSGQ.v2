@@ -9,22 +9,42 @@ import { GoogleSitesGuideModal } from '../components/GoogleSitesGuideModal';
 import { sounds } from '../sound';
 import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
 
+import { getSaoPauloDateString, getQuestionsForDate } from '../competition/competitionEngine';
+
 interface GamePageProps {}
 
 export const GamePage: React.FC<GamePageProps> = () => {
-  // Questions and Theme loaded dynamically from storageService
-  const [questions, setQuestions] = useState<Question[]>(() => storageService.getActiveQuestions());
+  const today = getSaoPauloDateString();
+  const dailyQuestions = getQuestionsForDate(today);
+
+  // Carrega as 5 perguntas correspondentes ao dia de hoje da competição
+  const [questions, setQuestions] = useState<Question[]>(() => {
+    return dailyQuestions.length > 0 ? dailyQuestions : storageService.getActiveQuestions();
+  });
   const [theme, setTheme] = useState<GameTheme>(() => storageService.getTheme());
   const [webhookUrl, setWebhookUrl] = useState<string>(() => storageService.getWebhookUrl());
 
   // Listen to storage changes so if admin updates, player receives it
   useEffect(() => {
     return storageService.subscribe(() => {
-      setQuestions(storageService.getActiveQuestions());
+      const updatedDaily = getQuestionsForDate(getSaoPauloDateString());
+      setQuestions(updatedDaily.length > 0 ? updatedDaily : storageService.getActiveQuestions());
       setTheme(storageService.getTheme());
       setWebhookUrl(storageService.getWebhookUrl());
     });
   }, []);
+
+  // Retomada automática de tentativa em andamento no mesmo dia (após refresh ou fechar aba)
+  useEffect(() => {
+    const inProg = storageService.getInProgressAttempt();
+    if (inProg && inProg.date === today && inProg.email) {
+      setPlayerInfo({ name: inProg.name, email: inProg.email });
+      setCurrentIndex(inProg.currentIndex || 0);
+      setScore(inProg.score || 0);
+      setRecords(inProg.records || []);
+      setPhase('AIMING');
+    }
+  }, [today]);
 
   // Game Flow State
   const [phase, setPhase] = useState<'START' | 'AIMING' | 'SHOOTING' | 'RESULT_REVEAL' | 'GAME_OVER'>('START');
@@ -109,18 +129,29 @@ export const GamePage: React.FC<GamePageProps> = () => {
       setPhase('RESULT_REVEAL');
 
       // Record answer history
-      setRecords((prev) => [
-        ...prev,
-        {
-          questionId: currentQuestion.id || `q-${currentIndex}`,
-          pergunta: currentQuestion.pergunta,
-          userChoice: corner,
-          userText: currentQuestion.respostas[corner],
-          correctChoice: currentQuestion.correta,
-          correctText: currentQuestion.respostas[currentQuestion.correta],
-          isCorrect,
-        },
-      ]);
+      const newRecord = {
+        questionId: currentQuestion.id || `q-${currentIndex}`,
+        pergunta: currentQuestion.pergunta,
+        userChoice: corner,
+        userText: currentQuestion.respostas[corner],
+        correctChoice: currentQuestion.correta,
+        correctText: currentQuestion.respostas[currentQuestion.correta],
+        isCorrect,
+      };
+
+      setRecords((prev) => {
+        const updated = [...prev, newRecord];
+        // Grava tentativa em andamento para retomada sem perda em caso de refresh
+        storageService.saveInProgressAttempt({
+          email: playerInfo.email,
+          name: playerInfo.name,
+          date: today,
+          currentIndex: currentIndex + 1,
+          score: isCorrect ? score + 1 : score,
+          records: updated,
+        });
+        return updated;
+      });
 
       // Pause briefly then advance to next question or game over
       setTimeout(() => {
@@ -130,6 +161,7 @@ export const GamePage: React.FC<GamePageProps> = () => {
           setCurrentResult(null);
           setPhase('AIMING');
         } else {
+          storageService.clearInProgressAttempt();
           setPhase('GAME_OVER');
           sounds.playWhistle();
         }

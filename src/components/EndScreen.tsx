@@ -57,24 +57,25 @@ export const EndScreen: React.FC<EndScreenProps> = ({
   }
 
   // Registrar tentativa (nome, email, acertos) e impedir repetição da rodada
+  // Registrar tentativa (nome, email, acertos, data) por data da rodada
   useEffect(() => {
     if (playerInfo.email && playerInfo.email.trim()) {
       const cleanEmail = playerInfo.email.trim().toLowerCase();
-      try {
-        const playedEmails: string[] = JSON.parse(localStorage.getItem('copa_sgq_played_emails') || '[]');
-        if (!playedEmails.includes(cleanEmail)) {
-          playedEmails.push(cleanEmail);
-          localStorage.setItem('copa_sgq_played_emails', JSON.stringify(playedEmails));
-        }
-      } catch (err) {}
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
 
-      // Gravar registro completo da tentativa para a Área do Gestor (Nome + Acertos)
+      // Gravar registro completo da tentativa por data para a Área do Gestor (Nome + Acertos + Data)
       storageService.recordAttempt({
         name: playerInfo.name || 'Jogador',
         email: cleanEmail,
         score,
         totalQuestions,
-        timestamp: new Date().toLocaleString('pt-BR'),
+        date: today,
+        timestamp: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
       });
     }
   }, [playerInfo.name, playerInfo.email, score, totalQuestions]);
@@ -83,15 +84,25 @@ export const EndScreen: React.FC<EndScreenProps> = ({
   useEffect(() => {
     if (!webhookUrl || webhookUrl.trim() === '') return;
 
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
     setWebhookStatus('sending');
     const payload = {
-      timestamp: new Date().toLocaleString('pt-BR'),
+      timestamp: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+      date: today,
+      data: today,
       name: playerInfo.name,
       nome: playerInfo.name,
       email: playerInfo.email || 'N/A',
       theme: theme.title,
       score,
       gols: score,
+      acertos: `${score}/${totalQuestions}`,
       totalQuestions,
       total: totalQuestions,
       percentage: `${percentage}%`,

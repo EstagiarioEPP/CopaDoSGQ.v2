@@ -24,8 +24,10 @@ import {
   XCircle,
   Copy,
   Users,
-  Code2
+  Code2,
+  Trophy
 } from 'lucide-react';
+import { calculateCompetitionMatrix, COMPETITION_DAYS } from '../../competition/competitionEngine';
 
 interface AdminDashboardProps {
   onNavigateToGame: () => void;
@@ -819,86 +821,205 @@ function doGet(e) {
           </div>
         )}
 
-        {/* ABA 5: TENTATIVAS & COLABORADORES */}
-        {activeTab === 'players' && (
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <Users className="w-4 h-4 text-amber-400" />
-                  <span>Tentativas Registradas ({attempts.length})</span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Histórico de jogadores que concluíram a rodada, pontuação obtida e controle de tentativa única por e-mail.
-                </p>
+        {/* ABA 5: TENTATIVAS & COMPETIÇÃO */}
+        {activeTab === 'players' && (() => {
+          const matrix = calculateCompetitionMatrix(attempts);
+
+          return (
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6">
+              {/* Cabeçalho */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Users className="w-4 h-4 text-amber-400" />
+                    <span>Competição 2026 — Apuração dos 4 Participantes</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Acompanhamento diário dos 4 participantes autorizados (16 a 20 de novembro de 2026) e Modelo C de Eliminação.
+                  </p>
+                </div>
+
+                {attempts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearPlayedEmails}
+                    className="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Zerar Tentativas Registradas</span>
+                  </button>
+                )}
               </div>
 
-              {attempts.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearPlayedEmails}
-                  className="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Liberar Todas as Tentativas para Jogar Novamente</span>
-                </button>
-              )}
-            </div>
+              {/* 1. VISÃO RESUMIDA: MATRIZ COLABORADORES X DIAS */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider font-mono">
+                    📊 VISÃO RESUMIDA (COLABORADORES × DIAS)
+                  </h3>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    5 rodadas · 5 perguntas/dia
+                  </span>
+                </div>
 
-            {attempts.length === 0 ? (
-              <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400">
-                Nenhuma tentativa registrada ainda nesta rodada.
-              </div>
-            ) : (
-              <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
-                        <th className="px-4 py-3">#</th>
-                        <th className="px-4 py-3">Nome do Jogador</th>
-                        <th className="px-4 py-3">E-mail</th>
-                        <th className="px-4 py-3 text-center">Acertos</th>
-                        <th className="px-4 py-3 text-right">Data / Hora</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60">
-                      {attempts.map((attempt, idx) => {
-                        const total = attempt.totalQuestions || 5;
-                        const isHigh = attempt.score >= Math.ceil(total * 0.7);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
-                            <td className="px-4 py-3 text-slate-500 font-mono">{idx + 1}</td>
-                            <td className="px-4 py-3 font-semibold text-white">
-                              {attempt.name || 'Jogador Anônimo'}
-                            </td>
-                            <td className="px-4 py-3 font-mono text-slate-400">
-                              {attempt.email}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold font-mono text-xs border ${
-                                  isHigh
-                                    ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
-                                    : 'bg-amber-950/80 text-amber-400 border-amber-500/40'
-                                }`}
-                              >
-                                ⚽ {attempt.score}/{total}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-right text-slate-400 font-mono text-[11px]">
-                              {attempt.timestamp}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-900/90 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+                          <th className="px-4 py-3">Colaborador</th>
+                          <th className="px-3 py-3 text-center">16/11</th>
+                          <th className="px-3 py-3 text-center">17/11</th>
+                          <th className="px-3 py-3 text-center">18/11</th>
+                          <th className="px-3 py-3 text-center">19/11</th>
+                          <th className="px-3 py-3 text-center">20/11</th>
+                          <th className="px-3 py-3 text-center font-bold text-white">Total</th>
+                          <th className="px-4 py-3 text-right">Situação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 font-mono">
+                        {matrix.map((row, idx) => {
+                          const isEliminated = row.status === 'Eliminado';
+                          const isChampion = row.status === 'Campeão';
+
+                          return (
+                            <tr
+                              key={idx}
+                              className={`transition-colors ${
+                                isChampion
+                                  ? 'bg-amber-950/20 hover:bg-amber-950/30'
+                                  : isEliminated
+                                  ? 'bg-rose-950/10 hover:bg-rose-950/20 opacity-70'
+                                  : 'hover:bg-slate-900/40'
+                              }`}
+                            >
+                              <td className="px-4 py-3 font-sans">
+                                <div className="font-semibold text-white text-xs">{row.name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{row.email}</div>
+                              </td>
+
+                              {/* 16/11 */}
+                              <td className="px-3 py-3 text-center">
+                                {row.dias['2026-11-16'] !== null ? `${row.dias['2026-11-16']}/5` : '—'}
+                              </td>
+
+                              {/* 17/11 */}
+                              <td className="px-3 py-3 text-center">
+                                {row.dias['2026-11-17'] !== null ? `${row.dias['2026-11-17']}/5` : '—'}
+                              </td>
+
+                              {/* 18/11 */}
+                              <td className="px-3 py-3 text-center">
+                                {row.dias['2026-11-18'] !== null ? `${row.dias['2026-11-18']}/5` : '—'}
+                              </td>
+
+                              {/* 19/11 */}
+                              <td className="px-3 py-3 text-center">
+                                {row.dias['2026-11-19'] !== null ? `${row.dias['2026-11-19']}/5` : '—'}
+                              </td>
+
+                              {/* 20/11 */}
+                              <td className="px-3 py-3 text-center">
+                                {row.dias['2026-11-20'] !== null ? `${row.dias['2026-11-20']}/5` : '—'}
+                              </td>
+
+                              {/* Total Acumulado */}
+                              <td className="px-3 py-3 text-center font-bold text-white text-sm">
+                                {row.total}
+                              </td>
+
+                              {/* Situação */}
+                              <td className="px-4 py-3 text-right font-sans">
+                                {isChampion && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                                    <Trophy className="w-3 h-3 text-amber-400" />
+                                    <span>Campeão</span>
+                                  </span>
+                                )}
+                                {isEliminated && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                    <span>Eliminado ({row.eliminatedDate || 'Rodada'})</span>
+                                  </span>
+                                )}
+                                {!isChampion && !isEliminated && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                    <span>Ativo</span>
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
-        )}
+
+              {/* 2. HISTÓRICO DETALHADO INDIVIDUAL */}
+              <div className="space-y-2.5 pt-4 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">
+                    📋 HISTÓRICO DETALHADO ({attempts.length} tentativas registradas)
+                  </h3>
+                </div>
+
+                {attempts.length === 0 ? (
+                  <div className="p-6 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400">
+                    Nenhuma tentativa registrada ainda no sistema.
+                  </div>
+                ) : (
+                  <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+                            <th className="px-4 py-3">#</th>
+                            <th className="px-4 py-3">Nome do Jogador</th>
+                            <th className="px-4 py-3">E-mail</th>
+                            <th className="px-4 py-3 text-center">Acertos</th>
+                            <th className="px-4 py-3 text-right">Data / Horário</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                          {attempts.map((attempt, idx) => {
+                            const total = attempt.totalQuestions || 5;
+                            const isHigh = attempt.score >= Math.ceil(total * 0.7);
+                            return (
+                              <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
+                                <td className="px-4 py-3 text-slate-500 font-mono">{idx + 1}</td>
+                                <td className="px-4 py-3 font-semibold text-white">
+                                  {attempt.name || 'Jogador Anônimo'}
+                                </td>
+                                <td className="px-4 py-3 font-mono text-slate-400">
+                                  {attempt.email}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold font-mono text-xs border ${
+                                      isHigh
+                                        ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
+                                        : 'bg-amber-950/80 text-amber-400 border-amber-500/40'
+                                    }`}
+                                  >
+                                    ⚽ {attempt.score}/{total}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right text-slate-400 font-mono text-[11px]">
+                                  {attempt.timestamp}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </main>
 
       {/* JSON Import/Export Modal */}

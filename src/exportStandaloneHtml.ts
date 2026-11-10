@@ -551,9 +551,50 @@ export function generateStandaloneHtml(
               <!-- Camisa #00be98 com SGQ -->
               <rect x="36" y="40" width="38" height="30" fill="${keeperColor}" />
               <rect x="47" y="40" width="16" height="4" fill="#ffffff" />
-              <text x="55" y="59" text-anchor="middle" fill="#022c22" font-size="8" font-weight="900" font-family="'Press Start 2P', monospace, sans-serif" letter-spacing="0.5">SGQ</text>
-              <rect x="2" y="42" width="16" height="22" fill="#fbbf24" stroke="#78350f" stroke-width="2" />
-              <rect x="92" y="42" width="16" height="22" fill="#fbbf24" stroke="#78350f" stroke-width="2" />
+              <!-- Luvas de Goleiro em Pixel Art (Dedos, Polegar e Punho) -->
+              <!-- Luva Esquerda -->
+              <rect x="9" y="53" width="10" height="5" fill="#09090b" />
+              <rect x="10" y="54" width="8" height="3" fill="#1e293b" />
+              <rect x="12" y="54" width="5" height="3" fill="#00be98" />
+              <rect x="3" y="44" width="15" height="10" fill="#09090b" />
+              <rect x="4" y="45" width="13" height="8" fill="#ffffff" />
+              <rect x="5" y="45" width="11" height="3" fill="#00be98" />
+              <rect x="17" y="46" width="4" height="6" fill="#09090b" />
+              <rect x="17" y="47" width="3" height="4" fill="#ffffff" />
+              <rect x="2" y="41" width="4" height="6" fill="#09090b" />
+              <rect x="3" y="42" width="2" height="4" fill="#ffffff" />
+              <rect x="3" y="42" width="2" height="2" fill="#00be98" />
+              <rect x="6" y="38" width="4" height="8" fill="#09090b" />
+              <rect x="7" y="39" width="2" height="6" fill="#ffffff" />
+              <rect x="7" y="39" width="2" height="2" fill="#00be98" />
+              <rect x="10" y="36" width="4" height="10" fill="#09090b" />
+              <rect x="11" y="37" width="2" height="8" fill="#ffffff" />
+              <rect x="11" y="37" width="2" height="2" fill="#00be98" />
+              <rect x="14" y="38" width="4" height="8" fill="#09090b" />
+              <rect x="15" y="39" width="2" height="6" fill="#ffffff" />
+              <rect x="15" y="39" width="2" height="2" fill="#00be98" />
+
+              <!-- Luva Direita -->
+              <rect x="91" y="53" width="10" height="5" fill="#09090b" />
+              <rect x="92" y="54" width="8" height="3" fill="#1e293b" />
+              <rect x="93" y="54" width="5" height="3" fill="#00be98" />
+              <rect x="92" y="44" width="15" height="10" fill="#09090b" />
+              <rect x="93" y="45" width="13" height="8" fill="#ffffff" />
+              <rect x="94" y="45" width="11" height="3" fill="#00be98" />
+              <rect x="89" y="46" width="4" height="6" fill="#09090b" />
+              <rect x="90" y="47" width="3" height="4" fill="#ffffff" />
+              <rect x="92" y="38" width="4" height="8" fill="#09090b" />
+              <rect x="93" y="39" width="2" height="6" fill="#ffffff" />
+              <rect x="93" y="39" width="2" height="2" fill="#00be98" />
+              <rect x="96" y="36" width="4" height="10" fill="#09090b" />
+              <rect x="97" y="37" width="2" height="8" fill="#ffffff" />
+              <rect x="97" y="37" width="2" height="2" fill="#00be98" />
+              <rect x="100" y="38" width="4" height="8" fill="#09090b" />
+              <rect x="101" y="39" width="2" height="6" fill="#ffffff" />
+              <rect x="101" y="39" width="2" height="2" fill="#00be98" />
+              <rect x="104" y="41" width="4" height="6" fill="#09090b" />
+              <rect x="105" y="42" width="2" height="4" fill="#ffffff" />
+              <rect x="105" y="42" width="2" height="2" fill="#00be98" />
               <rect x="40" y="70" width="30" height="18" fill="#18181b" />
               <rect x="42" y="98" width="10" height="12" fill="#ffffff" />
               <rect x="58" y="98" width="10" height="12" fill="#ffffff" />

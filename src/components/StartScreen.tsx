@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import { GameTheme, PlayerInfo } from '../types';
 import { Trophy, Play, Settings, FileCode2, HelpCircle, AlertCircle } from 'lucide-react';
 import { sounds } from '../sound';
+import { CompetitionStatusBanner } from './CompetitionStatusBanner';
+import {
+  canParticipantPlayToday,
+  getSaoPauloDateString,
+  getCompetitionTimeline,
+} from '../competition/competitionEngine';
+import { storageService } from '../services/storageService';
 
 interface StartScreenProps {
   theme: GameTheme;
@@ -28,6 +35,9 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   const [email, setEmail] = useState(playerInfo.email);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const today = getSaoPauloDateString();
+  const timeline = getCompetitionTimeline(today);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -35,27 +45,34 @@ export const StartScreen: React.FC<StartScreenProps> = ({
       return;
     }
 
+    if (!email.trim()) {
+      setErrorMsg('Por favor, informe seu e-mail corporativo.');
+      return;
+    }
+
     const cleanEmail = email.trim().toLowerCase();
-    if (cleanEmail) {
-      // Bloquear se o e-mail já tiver realizado a tentativa da rodada
-      try {
-        const playedEmails: string[] = JSON.parse(localStorage.getItem('copa_sgq_played_emails') || '[]');
-        if (Array.isArray(playedEmails) && playedEmails.includes(cleanEmail)) {
-          setErrorMsg('⚠️ Este e-mail já participou desta rodada! É permitida apenas 1 tentativa por colaborador. Fique ligado nos próximos dias!');
-          sounds.playBuzzer();
-          return;
-        }
-      } catch (err) {}
+
+    // Validação oficial: 4 participantes autorizados + tentativa única por data + não eliminado
+    const attempts = storageService.getAttempts();
+    const check = canParticipantPlayToday(cleanEmail, today, attempts);
+
+    if (!check.allowed) {
+      setErrorMsg(check.reason || 'Participação não autorizada.');
+      sounds.playBuzzer();
+      return;
     }
 
     setErrorMsg('');
-    onUpdatePlayer({ name: name.trim(), email: email.trim() });
+    onUpdatePlayer({ name: name.trim(), email: cleanEmail });
     sounds.playWhistle();
     onStartGame();
   };
 
   return (
     <div className="w-full max-w-2xl mx-auto bg-slate-900/95 border-4 border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md relative overflow-hidden">
+      {/* Banner de status do calendário da competição oficial */}
+      <CompetitionStatusBanner />
+
       {/* Retro Arcade Header Banner com Identidade ACIM */}
       <div className="text-center mb-6">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full mb-2.5">
@@ -75,9 +92,9 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           {theme.subtitle}
         </p>
 
-        {/* Aviso de tentativa única */}
+        {/* Aviso de tentativa única diária */}
         <div className="mt-3 inline-block bg-rose-500/15 border border-rose-500/50 text-rose-300 font-bold text-xs uppercase px-3.5 py-1.5 rounded-lg tracking-wide">
-          ⚠️ Atenção: Tentativa única por colaborador!
+          ⚠️ Atenção: 1 tentativa por colaborador a cada dia da competição!
         </div>
 
         <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-md mx-auto">
@@ -143,11 +160,11 @@ export const StartScreen: React.FC<StartScreenProps> = ({
               setEmail(e.target.value);
               setErrorMsg('');
             }}
-            placeholder="seu.email@empresa.com.br"
+            placeholder="seu.email@acim.com.br"
             className="w-full px-4 py-3 bg-slate-950 border-2 border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-hidden focus:border-amber-400 transition-colors text-sm sm:text-base font-medium"
           />
           <span className="text-[11px] text-slate-400 mt-1 block">
-            Utilizado para validação de tentativa única da rodada e registro na planilha.
+            Utilizado para validação de tentativa única do dia e apuração dos resultados.
           </span>
         </div>
 
