@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameAnswerRecord, GameTheme } from '../types';
-import { Volume2, VolumeX, RotateCcw, HelpCircle } from 'lucide-react';
+import { Volume2, VolumeX } from 'lucide-react';
 import { sounds } from '../sound';
 
 interface ScoreBoardProps {
@@ -12,8 +12,6 @@ interface ScoreBoardProps {
   theme: GameTheme;
   isMuted: boolean;
   onToggleMute: () => void;
-  onRestart: () => void;
-  onOpenGuide: () => void;
 }
 
 export const ScoreBoard: React.FC<ScoreBoardProps> = ({
@@ -24,8 +22,6 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   playerName,
   isMuted,
   onToggleMute,
-  onRestart,
-  onOpenGuide,
 }) => {
   return (
     <div className="w-full max-w-5xl mx-auto mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-900/90 border-2 border-slate-800 rounded-xl backdrop-blur-md shadow-md text-slate-200">
@@ -100,24 +96,6 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
           className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
         >
           {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
-        </button>
-
-        {/* Instructions/Help Guide */}
-        <button
-          onClick={onOpenGuide}
-          title="Guia Google Sites & Instruções"
-          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-        >
-          <HelpCircle className="w-4 h-4" />
-        </button>
-
-        {/* Restart button */}
-        <button
-          onClick={onRestart}
-          title="Reiniciar Partida"
-          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-        >
-          <RotateCcw className="w-4 h-4" />
         </button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Question, GameTheme, Corner, AttemptRecord } from '../../types';
-import { PRESET_THEMES, DEFAULT_QUESTIONS } from '../../defaultQuestions';
+import { PRESET_THEMES, DEFAULT_QUESTIONS, OFFICIAL_25_QUESTIONS } from '../../defaultQuestions';
 import { storageService } from '../../services/storageService';
 import { generateStandaloneHtml } from '../../exportStandaloneHtml';
 import { sounds } from '../../sound';
@@ -25,9 +25,23 @@ import {
   Copy,
   Users,
   Code2,
-  Trophy
+  Trophy,
+  Calendar,
+  Award
 } from 'lucide-react';
-import { calculateCompetitionMatrix, COMPETITION_DAYS } from '../../competition/competitionEngine';
+import {
+  calculateCompetitionMatrix,
+  COMPETITION_DAYS,
+  AUTHORIZED_PARTICIPANTS,
+} from '../../competition/competitionEngine';
+
+const DAY_TOPIC_TITLES: Record<number, string> = {
+  1: '5S e Gestão da Informação / Não Conformidades',
+  2: 'Não Conformidades / Objetivos e Indicadores / Gestão de Riscos',
+  3: 'Gestão de Riscos / Missão, Visão, Valores e Política da Qualidade',
+  4: 'Visão Sistêmica e Melhoria Contínua / Atendimento',
+  5: 'Atendimento e Postura Profissional / LGPD',
+};
 
 interface AdminDashboardProps {
   onNavigateToGame: () => void;
@@ -290,45 +304,89 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateToGame
   const activeQuestionsCount = questions.filter((q) => q.ativo !== false).length;
   const standaloneHtml = generateStandaloneHtml(questions, theme, webhookUrl);
 
-  const appsScriptCode = `// CÓDIGO GOOGLE APPS SCRIPT PARA RECEBER RESULTADOS DA COPA DO SGQ
+  const appsScriptCode = `/**
+ * =========================================================================
+ * GOOGLE APPS SCRIPT — COPA DO SGQ ACIM (NOVEMBRO 2026)
+ * =========================================================================
+ */
+var GABARITO_OFICIAL = {
+  // 16/11/2026
+  "Q01": "B", "Q02": "C", "Q03": "C", "Q04": "B", "Q05": "A",
+  // 17/11/2026
+  "Q06": "C", "Q07": "B", "Q08": "C", "Q09": "C", "Q10": "B",
+  // 18/11/2026
+  "Q11": "B", "Q12": "B", "Q13": "B", "Q14": "A", "Q15": "B",
+  // 19/11/2026
+  "Q16": "B", "Q17": "B", "Q18": "B", "Q19": "C", "Q20": "B",
+  // 20/11/2026
+  "Q21": "C", "Q22": "A", "Q23": "B", "Q24": "C", "Q25": "C"
+};
+
+var PARTICIPANTES_AUTORIZADOS = [
+  "consultor12@acim.com.br",
+  "escoladenegocios2@acim.com.br",
+  "supervisorcomercial@acim.com.br",
+  "escoladenegocios6@acim.com.br",
+  "estagioepp@acim.com.br"
+];
+
 function doPost(e) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(15000);
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    
-    // Cabeçalho automático
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(["Data e Hora", "Nome", "E-mail", "Gols", "Total", "Aproveitamento", "Detalhes"]);
-      sheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
+      sheet.appendRow(["Data e Hora", "Nome", "E-mail", "Data da Rodada", "Gols (Acertos)", "Total", "Aproveitamento", "Detalhes dos Chutes"]);
+      sheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
     }
-    
+
     var data = {};
     if (e && e.postData && e.postData.contents) {
-      data = JSON.parse(e.postData.contents);
+      try { data = JSON.parse(e.postData.contents); } catch (err) { data = e.parameter || {}; }
     } else if (e && e.parameter) {
       data = e.parameter;
     }
-    
-    sheet.appendRow([
-      data.timestamp || new Date().toLocaleString("pt-BR"),
-      data.nome || data.name || "Anônimo",
-      data.email || "-",
-      data.gols !== undefined ? data.gols : (data.score !== undefined ? data.score : 0),
-      data.total || data.totalQuestions || 5,
-      data.aproveitamento || data.percentage || "-",
-      data.answers || "-"
-    ]);
-    
-    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+
+    var email = (data.email || "").toString().trim().toLowerCase();
+    var nome = (data.nome || data.name || "Jogador").toString().trim();
+    var rodadaData = (data.date || data.data || "").toString().trim();
+    if (!rodadaData) rodadaData = Utilities.formatDate(new Date(), "America/Sao_Paulo", "yyyy-MM-dd");
+
+    var isAuthorized = PARTICIPANTES_AUTORIZADOS.some(function(p) { return p.toLowerCase() === email; });
+    var isAdminTest = email.indexOf("admin") !== -1 || email.indexOf("teste") !== -1;
+    if (!isAuthorized && !isAdminTest) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, error: "E-mail não autorizado." })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Bloqueio de duplicidade por e-mail + data
+    var numRows = sheet.getLastRow();
+    if (numRows > 1 && !isAdminTest) {
+      var rangeValues = sheet.getRange(2, 1, numRows - 1, Math.max(sheet.getLastColumn(), 4)).getValues();
+      for (var i = 0; i < rangeValues.length; i++) {
+        var rowEmail = (rangeValues[i][2] || "").toString().trim().toLowerCase();
+        var rowDate = (rangeValues[i][3] || "").toString().trim();
+        if (rowEmail === email && rowDate === rodadaData) {
+          return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Tentativa já registrada para hoje." })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+    }
+
+    var totalQuestions = Number(data.totalQuestions || data.total || 5);
+    var officialScore = Number(data.score !== undefined ? data.score : (data.gols || 0));
+    var percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
+    var timestampStr = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
+
+    sheet.appendRow([timestampStr, nome, email, rodadaData, officialScore, totalQuestions, percentage, data.answers || "-"]);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, score: officialScore, percentage: percentage })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
   }
 }
 
 function doGet(e) {
-  return ContentService.createTextOutput("✅ Webhook Copa do SGQ Ativo!")
-    .setMimeType(ContentService.MimeType.TEXT);
+  return ContentService.createTextOutput(JSON.stringify({ status: "online", competicao: "Copa do SGQ ACIM 2026" })).setMimeType(ContentService.MimeType.JSON);
 }`;
 
   return (
@@ -345,7 +403,7 @@ function doGet(e) {
                 Painel Administrativo da Copa do SGQ
               </h1>
               <span className="text-xs text-slate-400">
-                Gerencie perguntas, temas, planilha e integração com Google Sites
+                Gerenciamento Oficial da Competição (16 a 20 de novembro de 2026)
               </span>
             </div>
           </div>
@@ -391,7 +449,7 @@ function doGet(e) {
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
           >
-            <span>⚽ Perguntas & 4 Cantos ({activeQuestionsCount}/{questions.length} Ativas)</span>
+            <span>⚽ 25 Perguntas Oficiais (5 Dias)</span>
           </button>
 
           <button
@@ -439,23 +497,24 @@ function doGet(e) {
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>Tentativas ({attempts.length})</span>
+            <span>Tentativas & Apuração ({attempts.length})</span>
           </button>
         </div>
       </div>
 
       {/* Conteúdo Principal */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* ABA 1: PERGUNTAS */}
+        {/* ABA 1: PERGUNTAS OFICIAIS (25 PERGUNTAS / 5 DIAS) */}
         {activeTab === 'questions' && (
-          <div className="space-y-4">
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-6">
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <span>Banco de Perguntas & Cantos do Gol</span>
+                  <Calendar className="w-4 h-4 text-amber-400" />
+                  <span>25 Perguntas Oficiais — Calendário Fixo da Copa do SGQ</span>
                 </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Configure o enunciado, as 4 opções (A, B, C, D), a ordem das cobranças e o canto correto.
+                <p className="text-xs text-slate-400 mt-1">
+                  Distribuição fixa de 5 perguntas por dia (sem sorteio ou repetição). Edições feitas aqui sincronizam imediatamente com o jogo dos jogadores.
                 </p>
               </div>
 
@@ -464,7 +523,7 @@ function doGet(e) {
                   type="button"
                   onClick={handleOpenJson}
                   className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1.5"
-                  title="Importar ou exportar JSON"
+                  title="Importar ou exportar JSON completo"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Editor JSON</span>
@@ -474,170 +533,155 @@ function doGet(e) {
                   type="button"
                   onClick={handleResetDefault}
                   className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1.5"
-                  title="Restaurar padrão SGQ"
+                  title="Restaurar as 25 perguntas oficiais originais"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Restaurar SGQ</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleAddQuestion}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-lg text-xs cursor-pointer flex items-center gap-1.5 shadow"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Adicionar Pergunta</span>
+                  <span>Restaurar 25 Perguntas SGQ</span>
                 </button>
               </div>
             </div>
 
-            {/* Lista das Perguntas */}
-            <div className="space-y-4">
-              {questions.map((q, idx) => {
-                const isAtivo = q.ativo !== false;
+            {/* Agrupamento das 25 Perguntas nos 5 Dias Oficiais */}
+            <div className="space-y-6">
+              {COMPETITION_DAYS.map((day) => {
+                const targetIds: readonly string[] = day.questionIds;
+                const dayQuestions = questions.filter((q) => targetIds.includes(q.id));
+
                 return (
                   <div
-                    key={q.id || idx}
-                    className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-                      isAtivo
-                        ? 'bg-slate-900 border-slate-800 shadow-md'
-                        : 'bg-slate-950/70 border-slate-900 opacity-60'
-                    }`}
+                    key={day.date}
+                    className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-lg"
                   >
-                    {/* Header da Pergunta com Ordem, Ativação e Exclusão */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-800">
+                    {/* Cabeçalho do Dia */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
                       <div className="flex items-center gap-3">
-                        <span className="font-['Press_Start_2P'] text-[10px] text-amber-400">
-                          PÊNALTI #{idx + 1}
+                        <span className="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 font-['Press_Start_2P'] text-[10px] text-emerald-400">
+                          {day.label}/2026 · Rodada {day.dayIndex} de 5
                         </span>
-
-                        {/* Botão Ativar / Desativar Pergunta */}
-                        <button
-                          type="button"
-                          onClick={() => handleToggleAtivo(idx)}
-                          className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                            isAtivo
-                              ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-300'
-                              : 'bg-slate-800 border border-slate-700 text-slate-400'
-                          }`}
-                          title="Clique para alternar se esta pergunta participa do jogo"
-                        >
-                          {isAtivo ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <XCircle className="w-3.5 h-3.5 text-slate-500" />}
-                          <span>{isAtivo ? 'Ativa no Jogo' : 'Inativa (Pausada)'}</span>
-                        </button>
-
-                        <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/30 text-emerald-300">
-                          Canto Correto: <strong>[{q.correta}]</strong> {cornerNames[q.correta]}
-                        </span>
+                        <div>
+                          <h3 className="text-sm font-bold text-white">
+                            {DAY_TOPIC_TITLES[day.dayIndex] || `Bateria de Perguntas`}
+                          </h3>
+                          <span className="text-xs text-slate-400 font-mono">
+                            {day.questionIds.join(', ')} · 5 cobranças oficiais
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Reordenar e Excluir */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleMoveQuestion(idx, 'up')}
-                          disabled={idx === 0}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 cursor-pointer"
-                          title="Mover pergunta para cima"
-                        >
-                          <ArrowUp className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleMoveQuestion(idx, 'down')}
-                          disabled={idx === questions.length - 1}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 cursor-pointer"
-                          title="Mover pergunta para baixo"
-                        >
-                          <ArrowDown className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteQuestion(idx)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/80 text-slate-400 hover:text-rose-400 cursor-pointer ml-1"
-                          title="Excluir pergunta"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <span className="px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-[11px] font-mono text-amber-300">
+                        {dayQuestions.length} perguntas vinculadas
+                      </span>
                     </div>
 
-                    {/* Enunciado */}
-                    <div className="mb-4">
-                      <label className="block text-xs font-semibold text-slate-300 mb-1">
-                        Enunciado da Pergunta:
-                      </label>
-                      <input
-                        type="text"
-                        value={q.pergunta}
-                        onChange={(e) => handleUpdatePergunta(idx, e.target.value)}
-                        onBlur={handleSaveAll}
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white focus:outline-hidden focus:border-amber-400"
-                      />
-                    </div>
+                    {/* Lista das 5 perguntas deste dia */}
+                    <div className="space-y-4">
+                      {dayQuestions.map((q) => {
+                        const globalIdx = questions.findIndex((item) => item.id === q.id);
+                        const questionNum = globalIdx >= 0 ? globalIdx + 1 : parseInt(q.id.replace('Q', ''));
 
-                    {/* 4 Cantos / Alternativas */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                      {(['A', 'B', 'C', 'D'] as Corner[]).map((corner) => {
-                        const isCorrect = q.correta === corner;
                         return (
                           <div
-                            key={corner}
-                            className={`p-3 rounded-xl border-2 transition-all ${
-                              isCorrect
-                                ? 'border-emerald-500 bg-emerald-950/25'
-                                : 'border-slate-800 bg-slate-950'
-                            }`}
+                            key={q.id}
+                            className="p-4 sm:p-5 rounded-xl border border-slate-800/80 bg-slate-950/80 space-y-3"
                           >
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-xs font-bold text-amber-300 font-mono flex items-center gap-1.5">
-                                <span className="w-5 h-5 rounded bg-amber-400 text-slate-950 flex items-center justify-center font-bold text-[10px]">
-                                  {corner}
+                            {/* Identificação da Pergunta */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/60">
+                              <div className="flex items-center gap-2">
+                                <span className="font-['Press_Start_2P'] text-[10px] text-amber-400">
+                                  PERGUNTA #{questionNum} ({q.id})
                                 </span>
-                                <span>{cornerNames[corner]}</span>
-                              </span>
+                                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                                  Dia {day.label}/2026
+                                </span>
+                              </div>
 
-                              <label className="flex items-center gap-1 text-[11px] font-semibold cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name={`admin-correta-${idx}`}
-                                  checked={isCorrect}
-                                  onChange={() => handleUpdateCorreta(idx, corner)}
-                                  className="accent-emerald-500 cursor-pointer"
-                                />
-                                <span className={isCorrect ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
-                                  {isCorrect ? 'Correta ✓' : 'Marcar Correta'}
-                                </span>
-                              </label>
+                              <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-emerald-950/80 border border-emerald-500/30 text-emerald-300">
+                                Canto Correto Oficial: <strong>[{q.correta}]</strong> {cornerNames[q.correta]}
+                              </span>
                             </div>
 
-                            <input
-                              type="text"
-                              value={q.respostas[corner]}
-                              onChange={(e) => handleUpdateResposta(idx, corner, e.target.value)}
-                              onBlur={handleSaveAll}
-                              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-hidden focus:border-amber-400"
-                            />
+                            {/* Enunciado */}
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                                Enunciado da Pergunta:
+                              </label>
+                              <textarea
+                                rows={2}
+                                value={q.pergunta}
+                                onChange={(e) => handleUpdatePergunta(globalIdx, e.target.value)}
+                                onBlur={handleSaveAll}
+                                className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-hidden focus:border-amber-400 leading-relaxed"
+                              />
+                            </div>
+
+                            {/* 4 Alternativas / Cantos */}
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                                Alternativas & Canto do Gol:
+                              </label>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {(['A', 'B', 'C', 'D'] as Corner[]).map((corner) => {
+                                  const isCorrect = q.correta === corner;
+                                  return (
+                                    <div
+                                      key={corner}
+                                      className={`p-2.5 rounded-xl border transition-all ${
+                                        isCorrect
+                                          ? 'border-emerald-500/80 bg-emerald-950/20'
+                                          : 'border-slate-800 bg-slate-900/60'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-xs font-bold text-amber-300 font-mono flex items-center gap-1.5">
+                                          <span className="w-4 h-4 rounded bg-amber-400 text-slate-950 flex items-center justify-center font-bold text-[9px]">
+                                            {corner}
+                                          </span>
+                                          <span className="text-[11px]">{cornerNames[corner]}</span>
+                                        </span>
+
+                                        <label className="flex items-center gap-1 text-[11px] font-semibold cursor-pointer">
+                                          <input
+                                            type="radio"
+                                            name={`admin-correta-${q.id}`}
+                                            checked={isCorrect}
+                                            onChange={() => handleUpdateCorreta(globalIdx, corner)}
+                                            className="accent-emerald-500 cursor-pointer"
+                                          />
+                                          <span className={isCorrect ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
+                                            {isCorrect ? 'Gabarito ✓' : 'Defesa'}
+                                          </span>
+                                        </label>
+                                      </div>
+
+                                      <input
+                                        type="text"
+                                        value={q.respostas[corner]}
+                                        onChange={(e) => handleUpdateResposta(globalIdx, corner, e.target.value)}
+                                        onBlur={handleSaveAll}
+                                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-slate-200 focus:outline-hidden focus:border-amber-400"
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Explicação Didática */}
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                                Explicação Didática (exibida após o chute para reforço do conteúdo):
+                              </label>
+                              <input
+                                type="text"
+                                value={q.explicacao || ''}
+                                onChange={(e) => handleUpdateExplicacao(globalIdx, e.target.value)}
+                                onBlur={handleSaveAll}
+                                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-hidden focus:border-amber-400"
+                              />
+                            </div>
                           </div>
                         );
                       })}
-                    </div>
-
-                    {/* Explicação pós-gol */}
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">
-                        Explicação Didática (exibida após o gol para fixação do conteúdo):
-                      </label>
-                      <input
-                        type="text"
-                        value={q.explicacao || ''}
-                        onChange={(e) => handleUpdateExplicacao(idx, e.target.value)}
-                        onBlur={handleSaveAll}
-                        placeholder="Ex: A etapa Check (C) do PDCA tem o objetivo de verificar indicadores..."
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-hidden focus:border-amber-400"
-                      />
                     </div>
                   </div>
                 );
@@ -824,6 +868,11 @@ function doGet(e) {
         {/* ABA 5: TENTATIVAS & COMPETIÇÃO */}
         {activeTab === 'players' && (() => {
           const matrix = calculateCompetitionMatrix(attempts);
+          const distinctEmailsWithAttempts = new Set(attempts.map((a) => a.email.toLowerCase())).size;
+          const activeParticipantsCount = matrix.filter((m) => m.status !== 'Eliminado').length;
+          const totalPossibleScore = attempts.length * 5;
+          const totalActualScore = attempts.reduce((acc, a) => acc + (a.score || 0), 0);
+          const avgPercentage = totalPossibleScore > 0 ? Math.round((totalActualScore / totalPossibleScore) * 100) : 0;
 
           return (
             <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6">
@@ -832,10 +881,10 @@ function doGet(e) {
                 <div>
                   <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                     <Users className="w-4 h-4 text-amber-400" />
-                    <span>Competição 2026 — Apuração dos 4 Participantes</span>
+                    <span>Competição 2026 — Apuração dos Participantes Autorizados</span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-1">
-                    Acompanhamento diário dos 4 participantes autorizados (16 a 20 de novembro de 2026) e Modelo C de Eliminação.
+                    Acompanhamento diário dos participantes autorizados (16 a 20 de novembro de 2026) e Modelo C de Eliminação.
                   </p>
                 </div>
 
@@ -851,18 +900,55 @@ function doGet(e) {
                 )}
               </div>
 
-              {/* 1. VISÃO RESUMIDA: MATRIZ COLABORADORES X DIAS */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider font-mono">
-                    📊 VISÃO RESUMIDA (COLABORADORES × DIAS)
-                  </h3>
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    5 rodadas · 5 perguntas/dia
+              {/* 4 Cards de Métricas Reais do Sistema */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl">
+                  <span className="text-[11px] text-slate-400 block font-mono">AUTORIZADOS</span>
+                  <span className="text-lg sm:text-xl font-['Press_Start_2P'] text-white font-bold mt-1 block">
+                    {AUTHORIZED_PARTICIPANTS.length}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Colaboradores</span>
+                </div>
+
+                <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl">
+                  <span className="text-[11px] text-slate-400 block font-mono">ATIVOS NA COPA</span>
+                  <span className="text-lg sm:text-xl font-['Press_Start_2P'] text-emerald-400 font-bold mt-1 block">
+                    {activeParticipantsCount}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Não eliminados</span>
+                </div>
+
+                <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl">
+                  <span className="text-[11px] text-slate-400 block font-mono">TENTATIVAS REAIS</span>
+                  <span className="text-lg sm:text-xl font-['Press_Start_2P'] text-amber-400 font-bold mt-1 block">
+                    {attempts.length}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    {distinctEmailsWithAttempts} participante(s)
                   </span>
                 </div>
 
-                <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl">
+                  <span className="text-[11px] text-slate-400 block font-mono">APROVEITAMENTO GERAL</span>
+                  <span className="text-lg sm:text-xl font-['Press_Start_2P'] text-cyan-400 font-bold mt-1 block">
+                    {avgPercentage}%
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Gols / Total</span>
+                </div>
+              </div>
+
+              {/* 1. VISÃO RESUMIDA: MATRIZ COLABORADORES X DIAS */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                    <span>📊 VISÃO RESUMIDA (COLABORADORES × DIAS)</span>
+                  </h3>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    5 rodadas · 5 perguntas/dia (Modelo C)
+                  </span>
+                </div>
+
+                <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden shadow-md">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead>
@@ -965,34 +1051,41 @@ function doGet(e) {
                 </div>
 
                 {attempts.length === 0 ? (
-                  <div className="p-6 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400">
-                    Nenhuma tentativa registrada ainda no sistema.
+                  <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400">
+                    <p className="font-semibold text-slate-300 mb-1">Nenhuma tentativa registrada ainda no sistema.</p>
+                    <p className="text-slate-500">Os dados reais aparecerão aqui em tempo real assim que os colaboradores concluírem suas cobranças oficiais.</p>
                   </div>
                 ) : (
-                  <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                  <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden shadow-md">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs">
                         <thead>
                           <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                             <th className="px-4 py-3">#</th>
-                            <th className="px-4 py-3">Nome do Jogador</th>
+                            <th className="px-4 py-3">Nome do Colaborador</th>
                             <th className="px-4 py-3">E-mail</th>
-                            <th className="px-4 py-3 text-center">Acertos</th>
-                            <th className="px-4 py-3 text-right">Data / Horário</th>
+                            <th className="px-4 py-3 text-center">Data da Rodada</th>
+                            <th className="px-4 py-3 text-center">Acertos (Gols)</th>
+                            <th className="px-4 py-3 text-center">Aproveitamento</th>
+                            <th className="px-4 py-3 text-right">Data e Horário do Registro</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/60">
                           {attempts.map((attempt, idx) => {
                             const total = attempt.totalQuestions || 5;
                             const isHigh = attempt.score >= Math.ceil(total * 0.7);
+                            const perc = Math.round((attempt.score / total) * 100);
                             return (
                               <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
                                 <td className="px-4 py-3 text-slate-500 font-mono">{idx + 1}</td>
                                 <td className="px-4 py-3 font-semibold text-white">
-                                  {attempt.name || 'Jogador Anônimo'}
+                                  {attempt.name || 'Jogador'}
                                 </td>
                                 <td className="px-4 py-3 font-mono text-slate-400">
                                   {attempt.email}
+                                </td>
+                                <td className="px-4 py-3 text-center font-mono text-slate-300">
+                                  {attempt.date ? `${attempt.date.slice(8, 10)}/${attempt.date.slice(5, 7)}/${attempt.date.slice(0, 4)}` : '—'}
                                 </td>
                                 <td className="px-4 py-3 text-center">
                                   <span
@@ -1004,6 +1097,9 @@ function doGet(e) {
                                   >
                                     ⚽ {attempt.score}/{total}
                                   </span>
+                                </td>
+                                <td className="px-4 py-3 text-center font-mono text-xs text-slate-300">
+                                  {perc}%
                                 </td>
                                 <td className="px-4 py-3 text-right text-slate-400 font-mono text-[11px]">
                                   {attempt.timestamp}

@@ -1,5 +1,6 @@
 import { Question, AttemptRecord, ParticipantMatrixRow } from '../types';
 import { OFFICIAL_25_QUESTIONS } from '../defaultQuestions';
+import { storageService } from '../services/storageService';
 
 /**
  * MOTOR OFICIAL DA COPA DO SGQ ACIM (NOVEMBRO DE 2026)
@@ -63,12 +64,14 @@ export function isAuthorizedParticipant(email: string | undefined | null): boole
 
 /**
  * Retorna as 5 perguntas correspondentes à data oficial da rodada.
+ * Utiliza a mesma fonte de dados compartilhada com o painel administrativo.
  */
 export function getQuestionsForDate(dateStr: string): Question[] {
   const match = COMPETITION_DAYS.find((d) => d.date === dateStr);
   const targetIds: readonly string[] = match ? match.questionIds : COMPETITION_DAYS[0].questionIds;
+  const allQuestions = storageService.getQuestions();
 
-  return OFFICIAL_25_QUESTIONS.filter((q) => targetIds.includes(q.id));
+  return allQuestions.filter((q) => targetIds.includes(q.id));
 }
 
 /**

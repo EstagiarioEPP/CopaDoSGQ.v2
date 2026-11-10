@@ -5,7 +5,6 @@ import { StadiumField } from '../components/StadiumField';
 import { ScoreBoard } from '../components/ScoreBoard';
 import { StartScreen } from '../components/StartScreen';
 import { EndScreen } from '../components/EndScreen';
-import { GoogleSitesGuideModal } from '../components/GoogleSitesGuideModal';
 import { sounds } from '../sound';
 import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
 
@@ -54,7 +53,6 @@ export const GamePage: React.FC<GamePageProps> = () => {
   const [records, setRecords] = useState<GameAnswerRecord[]>([]);
   const [playerInfo, setPlayerInfo] = useState<PlayerInfo>({ name: '', email: '' });
   const [isMuted, setIsMuted] = useState(false);
-  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Result of current kick
   const [currentResult, setCurrentResult] = useState<{
@@ -77,11 +75,6 @@ export const GamePage: React.FC<GamePageProps> = () => {
     setSelectedCorner(null);
     setCurrentResult(null);
     setPhase('AIMING');
-  };
-
-  // Restart match
-  const handleRestart = () => {
-    handleStartGame();
   };
 
   // When participant clicks one of the 4 corners (A, B, C, D)
@@ -229,8 +222,6 @@ export const GamePage: React.FC<GamePageProps> = () => {
                   theme={theme}
                   isMuted={isMuted}
                   onToggleMute={handleToggleMute}
-                  onRestart={() => setPhase('START')}
-                  onOpenGuide={() => setIsGuideOpen(true)}
                 />
 
                 {/* Stadium Pitch, Goalkeeper, Ball and 4 Corners */}
@@ -253,7 +244,6 @@ export const GamePage: React.FC<GamePageProps> = () => {
                 playerInfo={playerInfo}
                 theme={theme}
                 webhookUrl={webhookUrl}
-                onRestart={handleRestart}
               />
             )}
           </>
@@ -262,23 +252,11 @@ export const GamePage: React.FC<GamePageProps> = () => {
 
       {/* 3. SUBTLE FOOTER */}
       <footer className="w-full border-t border-slate-800/80 py-3 px-4 text-center text-xs text-slate-500">
-        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
           <span>{theme.title} · Pênalti dos 4 Cantos do Gol</span>
-          <div className="flex items-center gap-3">
-            <span>Google Sites & Google Sheets Ready</span>
-          </div>
+          <span className="text-[11px] font-mono text-slate-500">Copa SGQ ACIM</span>
         </div>
       </footer>
-
-      {/* Guia Modal */}
-      <GoogleSitesGuideModal
-        isOpen={isGuideOpen}
-        onClose={() => setIsGuideOpen(false)}
-        appUrl={typeof window !== 'undefined' ? window.location.href : ''}
-        questions={questions}
-        theme={theme}
-        webhookUrl={webhookUrl}
-      />
     </div>
   );
 };

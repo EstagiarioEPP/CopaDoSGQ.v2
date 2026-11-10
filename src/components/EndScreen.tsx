@@ -11,8 +11,6 @@ interface EndScreenProps {
   playerInfo: PlayerInfo;
   theme: GameTheme;
   webhookUrl: string;
-  onRestart: () => void;
-  onOpenGuide?: () => void;
 }
 
 export const EndScreen: React.FC<EndScreenProps> = ({

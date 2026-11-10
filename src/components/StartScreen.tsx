@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { GameTheme, PlayerInfo } from '../types';
-import { Trophy, Play, Settings, FileCode2, HelpCircle, AlertCircle } from 'lucide-react';
+import { Trophy, Play, AlertCircle } from 'lucide-react';
 import { sounds } from '../sound';
 import { CompetitionStatusBanner } from './CompetitionStatusBanner';
 import {
   canParticipantPlayToday,
   getSaoPauloDateString,
-  getCompetitionTimeline,
 } from '../competition/competitionEngine';
 import { storageService } from '../services/storageService';
 
@@ -16,9 +15,6 @@ interface StartScreenProps {
   onUpdatePlayer: (info: PlayerInfo) => void;
   onStartGame: () => void;
   totalQuestions: number;
-  onOpenEditor?: () => void;
-  onOpenGuide?: () => void;
-  onExportStandalone?: () => void;
 }
 
 export const StartScreen: React.FC<StartScreenProps> = ({
@@ -27,16 +23,12 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   onUpdatePlayer,
   onStartGame,
   totalQuestions,
-  onOpenEditor,
-  onOpenGuide,
-  onExportStandalone,
 }) => {
   const [name, setName] = useState(playerInfo.name);
   const [email, setEmail] = useState(playerInfo.email);
   const [errorMsg, setErrorMsg] = useState('');
 
   const today = getSaoPauloDateString();
-  const timeline = getCompetitionTimeline(today);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,47 +175,6 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           <span>ENTRAR EM CAMPO ({totalQuestions} CHUTES)</span>
         </button>
       </form>
-
-      {/* Footer Utility Actions para o gestor (exibido apenas se habilitado) */}
-      {(onOpenEditor || onOpenGuide || onExportStandalone) && (
-        <div className="mt-8 pt-5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-          <div className="flex items-center gap-2">
-            {onOpenEditor && (
-              <button
-                type="button"
-                onClick={onOpenEditor}
-                className="inline-flex items-center gap-1.5 hover:text-amber-300 transition-colors cursor-pointer py-1 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800"
-              >
-                <Settings className="w-3.5 h-3.5 text-amber-400" />
-                <span>Editar Perguntas & Tema</span>
-              </button>
-            )}
-
-            {onOpenGuide && (
-              <button
-                type="button"
-                onClick={onOpenGuide}
-                className="inline-flex items-center gap-1.5 hover:text-emerald-300 transition-colors cursor-pointer py-1 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800"
-              >
-                <HelpCircle className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Guia Google Sites</span>
-              </button>
-            )}
-          </div>
-
-          {onExportStandalone && (
-            <button
-              type="button"
-              onClick={onExportStandalone}
-              className="inline-flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-pointer py-1 px-2.5 rounded-lg bg-indigo-950/60 border border-indigo-500/40 hover:bg-indigo-900/60"
-              title="Baixar jogo em um único arquivo HTML para os colaboradores"
-            >
-              <FileCode2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Baixar .HTML</span>
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 };

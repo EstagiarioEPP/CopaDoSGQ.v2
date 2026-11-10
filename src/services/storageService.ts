@@ -2,7 +2,7 @@ import { Question, GameTheme, AttemptRecord } from '../types';
 import { DEFAULT_QUESTIONS, PRESET_THEMES } from '../defaultQuestions';
 
 const STORAGE_KEYS = {
-  QUESTIONS: 'copa_sgq_questions_v3',
+  QUESTIONS: 'copa_sgq_questions_2026_official',
   THEME: 'copa_sgq_theme_v4',
   WEBHOOK: 'copa_sgq_webhook',
   PLAYED_EMAILS: 'copa_sgq_played_emails',
@@ -19,7 +19,7 @@ export const storageService = {
       const saved = localStorage.getItem(STORAGE_KEYS.QUESTIONS);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].respostas) {
+        if (Array.isArray(parsed) && parsed.length === 25 && parsed[0].respostas) {
           // Normalize ativo field (defaults to true)
           return parsed.map((q) => ({
             ...q,
@@ -30,7 +30,12 @@ export const storageService = {
     } catch (e) {
       console.error('Error loading questions from localStorage:', e);
     }
-    return DEFAULT_QUESTIONS.map((q) => ({ ...q, ativo: true }));
+    // Sempre garante as 25 perguntas oficiais completas
+    const defaultList = DEFAULT_QUESTIONS.map((q) => ({ ...q, ativo: true }));
+    try {
+      localStorage.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(defaultList));
+    } catch {}
+    return defaultList;
   },
 
   getActiveQuestions(): Question[] {
