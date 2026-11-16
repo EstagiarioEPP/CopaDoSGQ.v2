@@ -14,6 +14,8 @@ import { storageService } from '../services/storageService';
  */
 
 export const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo';
+export const OPERATING_HOURS_START = 8; // 08:00
+export const OPERATING_HOURS_END = 18; // 18:00 (bloqueado antes das 08:00 e a partir das 18:00)
 
 // PARTICIPANTES AUTORIZADOS (INCLUINDO E-MAIL DE TESTES)
 export const AUTHORIZED_PARTICIPANTS: readonly string[] = [
@@ -69,6 +71,43 @@ export function getSaoPauloDateString(baseDate: Date = new Date()): string {
     return formatter.format(baseDate);
   } catch {
     return baseDate.toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * Obtém hora e minuto atuais no fuso oficial America/Sao_Paulo e valida a janela 08:00 às 18:00.
+ */
+export function getSaoPauloTimeInfo(baseDate: Date = new Date()): {
+  hour: number;
+  minute: number;
+  formattedTime: string;
+  isWithinHours: boolean;
+} {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: SAO_PAULO_TIMEZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(baseDate);
+
+    const rawHour = Number(parts.find((p) => p.type === 'hour')?.value ?? '12');
+    const hour = rawHour === 24 ? 0 : rawHour;
+    const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+    const formattedTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    const isWithinHours = hour >= OPERATING_HOURS_START && hour < OPERATING_HOURS_END;
+
+    return { hour, minute, formattedTime, isWithinHours };
+  } catch {
+    const hour = baseDate.getHours();
+    const minute = baseDate.getMinutes();
+    const formattedTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    return {
+      hour,
+      minute,
+      formattedTime,
+      isWithinHours: hour >= OPERATING_HOURS_START && hour < OPERATING_HOURS_END,
+    };
   }
 }
 
@@ -254,8 +293,32 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
 export function canParticipantPlayToday(
   email: string,
   dateStr: string,
-  attempts: AttemptRecord[]
-): { allowed: boolean; reason?: string; isEliminated?: boolean; eliminatedDate?: string } {
+  attempts: AttemptRecord[],
+  options?: { bypassTimeCheck?: boolean; isTestMode?: boolean }
+): {
+  allowed: boolean;
+  reason?: string;
+  isEliminated?: boolean;
+  eliminatedDate?: string;
+  isOutsideHours?: boolean;
+} {
+  // Em Modo Teste Administrativo, libera qualquer data, horário e ignora bloqueios
+  if (options?.isTestMode) {
+    return { allowed: true };
+  }
+
+  // 0. Trava de horário oficial (08:00 às 18:00 - Horário de Brasília)
+  if (!options?.bypassTimeCheck) {
+    const timeInfo = getSaoPauloTimeInfo();
+    if (!timeInfo.isWithinHours) {
+      return {
+        allowed: false,
+        isOutsideHours: true,
+        reason: `⏰ Fora do horário oficial de cobranças (agora são ${timeInfo.formattedTime}). As rodadas ficam abertas exclusivamente das 08:00 às 18:00 (horário de Brasília).`,
+      };
+    }
+  }
+
   if (!email || !email.trim()) {
     return { allowed: false, reason: 'Informe seu e-mail corporativo para jogar.' };
   }

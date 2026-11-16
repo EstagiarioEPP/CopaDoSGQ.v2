@@ -3,13 +3,20 @@
  * GOOGLE APPS SCRIPT — COPA DO SGQ ACIM (NOVEMBRO 2026)
  * =========================================================================
  *
- * Este script é compatível com o endpoint atual e implementa:
- * 1. Restrição aos 4 participantes autorizados.
+ * Planilha oficial vinculada:
+ * https://docs.google.com/spreadsheets/d/1gZ6lMxCUw3GUGgHkhsifDZ_IwGolb9tXOFty3l4OTZA/edit?gid=0#gid=0
+ *
+ * Funcionalidades:
+ * 1. Restrição aos participantes autorizados.
  * 2. Validação oficial de pontuação no servidor (gabarito seguro).
- * 3. Bloqueio rigoroso de duplicidade por [e-mail + data].
- * 4. Controle de concorrência com LockService.
- * 5. Preservação total de linhas e registros antigos da planilha.
+ * 3. Bloqueio de horário oficial (08:00 às 18:00 - America/Sao_Paulo).
+ * 4. Bloqueio rigoroso de duplicidade por [e-mail + data normalizada].
+ * 5. Controle de concorrência com LockService.
+ * 6. Preservação total de linhas e registros antigos da planilha.
+ * 7. Leitura do histórico completo via doGet(e) para o Painel de Gestão.
  */
+
+var SPREADSHEET_ID = "1gZ6lMxCUw3GUGgHkhsifDZ_IwGolb9tXOFty3l4OTZA";
 
 // GABARITO OFICIAL SEGURO (25 PERGUNTAS)
 var GABARITO_OFICIAL = {
@@ -54,13 +61,42 @@ var PARTICIPANTES_AUTORIZADOS = [
   "estagioepp@acim.com.br"
 ];
 
+function getTargetSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  }
+  return ss.getActiveSheet();
+}
+
+function normalizeSheetDate(val) {
+  if (!val) return "";
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, "America/Sao_Paulo", "yyyy-MM-dd");
+  }
+  var str = val.toString().trim();
+  var isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3];
+  var brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (brMatch) return brMatch[3] + "-" + brMatch[2] + "-" + brMatch[1];
+  return str;
+}
+
+function normalizeSheetTimestamp(val) {
+  if (!val) return "";
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
+  }
+  return val.toString().trim();
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
     // Adquire lock exclusivo de até 15 segundos para evitar concorrência
     lock.waitLock(15000);
 
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var sheet = getTargetSheet();
 
     // Cria cabeçalho retrocompatível se a planilha for nova, ou adiciona a 9ª coluna sem afetar colunas 1-8 existentes
     if (sheet.getLastRow() === 0) {
@@ -100,7 +136,7 @@ function doPost(e) {
 
     var email = (data.email || "").toString().trim().toLowerCase();
     var nome = (data.nome || data.name || "Jogador").toString().trim();
-    var rodadaData = (data.date || data.data || "").toString().trim();
+    var rodadaData = normalizeSheetDate(data.date || data.data || "");
 
     // Se a data não foi enviada explicitamente, calcula no fuso de São Paulo
     if (!rodadaData) {
@@ -121,6 +157,18 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 1.5 Validação do horário oficial (08:00 às 18:00 - Horário de Brasília, com tolerância de envio para quem entrou antes das 18:00)
+    var now = new Date();
+    var spHour = Number(Utilities.formatDate(now, "America/Sao_Paulo", "H"));
+    var spMinute = Number(Utilities.formatDate(now, "America/Sao_Paulo", "m"));
+    var totalMinutes = spHour * 60 + spMinute;
+    if (!isAdminTest && (totalMinutes < (8 * 60 - 5) || totalMinutes > (18 * 60 + 10))) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: "Fora do horário oficial de cobranças (08:00 às 18:00 - Horário de Brasília)."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 2. BLOQUEIO DE DUPLICIDADE: e-mail + data da rodada
     // Percorre as linhas existentes na planilha (coluna 3 = E-mail, coluna 4 = Data da Rodada)
     var numRows = sheet.getLastRow();
@@ -128,7 +176,7 @@ function doPost(e) {
       var rangeValues = sheet.getRange(2, 1, numRows - 1, Math.max(sheet.getLastColumn(), 4)).getValues();
       for (var i = 0; i < rangeValues.length; i++) {
         var rowEmail = (rangeValues[i][2] || "").toString().trim().toLowerCase();
-        var rowDate = (rangeValues[i][3] || "").toString().trim();
+        var rowDate = normalizeSheetDate(rangeValues[i][3]);
 
         // Se encontrar mesmo e-mail e mesma data, rejeita para evitar duplicidade
         if (rowEmail === email && rowDate === rodadaData) {
@@ -210,10 +258,46 @@ function doPost(e) {
 }
 
 function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({
-    status: "online",
-    competicao: "Copa do SGQ ACIM 2026",
-    periodo: "16/11/2026 a 20/11/2026",
-    participantes: PARTICIPANTES_AUTORIZADOS.length
-  })).setMimeType(ContentService.MimeType.JSON);
+  try {
+    var sheet = getTargetSheet();
+    var numRows = sheet.getLastRow();
+    var numCols = Math.max(sheet.getLastColumn(), 9);
+    var attempts = [];
+
+    if (numRows > 1) {
+      var values = sheet.getRange(2, 1, numRows - 1, numCols).getValues();
+      for (var i = 0; i < values.length; i++) {
+        var row = values[i];
+        var rowEmail = (row[2] || "").toString().trim().toLowerCase();
+        if (!rowEmail || rowEmail.indexOf("@") === -1) continue;
+
+        attempts.push({
+          timestamp: normalizeSheetTimestamp(row[0]),
+          name: (row[1] || "Jogador").toString().trim(),
+          email: rowEmail,
+          date: normalizeSheetDate(row[3]),
+          score: Number(row[4] || 0),
+          totalQuestions: Number(row[5] || 5) || 5,
+          percentage: (row[6] || "").toString().trim(),
+          answers: (row[7] || "").toString().trim(),
+          tempoResposta: (row[8] !== undefined && row[8] !== null) ? row[8].toString().trim() : "-"
+        });
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "online",
+      competicao: "Copa do SGQ ACIM 2026",
+      periodo: "16/11/2026 a 20/11/2026",
+      participantes: PARTICIPANTES_AUTORIZADOS.length,
+      totalRegistros: attempts.length,
+      attempts: attempts
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      error: err.toString(),
+      attempts: []
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
 }

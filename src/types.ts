@@ -31,6 +31,14 @@ export interface AttemptRecord {
   dayIndex?: number; // 1 a 5
   tempoResposta?: string; // Tempo total da rodada em décimos de segundo (ex: "18.4s")
   temposPorPergunta?: number[]; // Tempos individuais por pergunta em décimos (ex: [4.2, 3.8, ...])
+  answersSummary?: string; // Detalhes dos chutes retornados da planilha oficial
+  source?: 'sheet' | 'local';
+}
+
+export interface TestModeConfig {
+  active: boolean;
+  simulatedDate: string; // YYYY-MM-DD
+  ignoreSchedule: boolean;
 }
 
 export interface ParticipantMatrixRow {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Question, GameTheme, PlayerInfo, GameAnswerRecord, Corner, GamePhase } from '../types';
+import { Question, GameTheme, PlayerInfo, GameAnswerRecord, Corner, GamePhase, TestModeConfig } from '../types';
 import { storageService } from '../services/storageService';
 import { StadiumField } from '../components/StadiumField';
 import { ScoreBoard } from '../components/ScoreBoard';
@@ -8,7 +8,7 @@ import { EndScreen } from '../components/EndScreen';
 import { EliminatedScreen } from '../components/EliminatedScreen';
 import { TimerWarningModal } from '../components/TimerWarningModal';
 import { sounds } from '../sound';
-import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
+import { Volume2, VolumeX, ShieldAlert, ArrowLeft, FlaskConical } from 'lucide-react';
 
 import {
   getSaoPauloDateString,
@@ -16,32 +16,44 @@ import {
   isTimedKnockoutDay,
 } from '../competition/competitionEngine';
 
-interface GamePageProps {}
+interface GamePageProps {
+  testMode?: TestModeConfig | null;
+  onExitTestMode?: () => void;
+}
 
-export const GamePage: React.FC<GamePageProps> = () => {
-  const today = getSaoPauloDateString();
+export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) => {
+  const isTestMode = Boolean(testMode?.active);
+  const today =
+    isTestMode && testMode?.simulatedDate ? testMode.simulatedDate : getSaoPauloDateString();
   const isTimedRound = isTimedKnockoutDay(today);
-  const dailyQuestions = getQuestionsForDate(today);
 
-  // Carrega as 5 perguntas correspondentes ao dia de hoje da competição
+  // Carrega as 5 perguntas correspondentes ao dia ativo (ou dia simulado no Modo Teste)
   const [questions, setQuestions] = useState<Question[]>(() => {
-    return dailyQuestions.length > 0 ? dailyQuestions : storageService.getActiveQuestions();
+    const daily = getQuestionsForDate(today);
+    return daily.length > 0 ? daily : storageService.getActiveQuestions();
   });
   const [theme, setTheme] = useState<GameTheme>(() => storageService.getTheme());
   const [webhookUrl, setWebhookUrl] = useState<string>(() => storageService.getWebhookUrl());
 
+  // Atualiza perguntas ao alterar data simulada no Modo Teste ou alterações no storage
+  useEffect(() => {
+    const daily = getQuestionsForDate(today);
+    setQuestions(daily.length > 0 ? daily : storageService.getActiveQuestions());
+  }, [today]);
+
   // Listen to storage changes so if admin updates, player receives it
   useEffect(() => {
     return storageService.subscribe(() => {
-      const updatedDaily = getQuestionsForDate(getSaoPauloDateString());
+      const updatedDaily = getQuestionsForDate(today);
       setQuestions(updatedDaily.length > 0 ? updatedDaily : storageService.getActiveQuestions());
       setTheme(storageService.getTheme());
       setWebhookUrl(storageService.getWebhookUrl());
     });
-  }, []);
+  }, [today]);
 
-  // Retomada automática de tentativa em andamento no mesmo dia (após refresh ou fechar aba)
+  // Retomada automática de tentativa em andamento no mesmo dia (apenas modo oficial)
   useEffect(() => {
+    if (isTestMode) return;
     const inProg = storageService.getInProgressAttempt();
     if (inProg && inProg.date === today && inProg.email) {
       setPlayerInfo({ name: inProg.name, email: inProg.email });
@@ -50,7 +62,7 @@ export const GamePage: React.FC<GamePageProps> = () => {
       setRecords(inProg.records || []);
       setPhase('AIMING');
     }
-  }, [today]);
+  }, [today, isTestMode]);
 
   // Game Flow State
   const [phase, setPhase] = useState<GamePhase>('START');
@@ -202,15 +214,17 @@ export const GamePage: React.FC<GamePageProps> = () => {
 
       setRecords((prev) => {
         const updated = [...prev, newRecord];
-        // Grava tentativa em andamento para retomada sem perda em caso de refresh
-        storageService.saveInProgressAttempt({
-          email: playerInfo.email,
-          name: playerInfo.name,
-          date: today,
-          currentIndex: currentIndex + 1,
-          score: isCorrect ? score + 1 : score,
-          records: updated,
-        });
+        // Grava tentativa em andamento para retomada sem perda em caso de refresh (apenas modo oficial)
+        if (!isTestMode) {
+          storageService.saveInProgressAttempt({
+            email: playerInfo.email,
+            name: playerInfo.name,
+            date: today,
+            currentIndex: currentIndex + 1,
+            score: isCorrect ? score + 1 : score,
+            records: updated,
+          });
+        }
         return updated;
       });
 
@@ -225,7 +239,9 @@ export const GamePage: React.FC<GamePageProps> = () => {
           setCurrentResult(null);
           setPhase('AIMING');
         } else {
-          storageService.clearInProgressAttempt();
+          if (!isTestMode) {
+            storageService.clearInProgressAttempt();
+          }
           setPhase('GAME_OVER');
           sounds.playWhistle();
         }
@@ -245,8 +261,22 @@ export const GamePage: React.FC<GamePageProps> = () => {
             </span>
           </div>
 
-          {/* Action: Som Mudo/Ativo */}
+          {/* Action: Som Mudo/Ativo e saída do Modo Teste */}
           <div className="flex items-center gap-3">
+            {isTestMode && onExitTestMode && (
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.stopTickTock();
+                  onExitTestMode();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Voltar ao Painel</span>
+              </button>
+            )}
+
             <button
               onClick={handleToggleMute}
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
@@ -258,6 +288,15 @@ export const GamePage: React.FC<GamePageProps> = () => {
           </div>
         </div>
       </header>
+
+      {isTestMode && (
+        <div className="w-full bg-amber-950/70 border-b border-amber-500/40 px-4 py-2 text-center text-xs text-amber-200 flex items-center justify-center gap-2">
+          <FlaskConical className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span>
+            <strong>Modo Teste Admin</strong> · Rodada simulada: <span className="font-mono font-bold">{today.split('-').reverse().join('/')}</span> · Gravação na planilha desativada
+          </span>
+        </div>
+      )}
 
       {/* 2. MAIN ARENA CONTENT */}
       <main className="flex-1 flex flex-col justify-center items-center px-3 sm:px-6 py-4 w-full max-w-6xl mx-auto">
@@ -282,6 +321,7 @@ export const GamePage: React.FC<GamePageProps> = () => {
                   setPhase('ELIMINATED');
                 }}
                 totalQuestions={questions.length}
+                testMode={testMode}
               />
             )}
 
@@ -340,6 +380,9 @@ export const GamePage: React.FC<GamePageProps> = () => {
                 theme={theme}
                 webhookUrl={webhookUrl}
                 isTimedRound={isTimedRound}
+                isTestMode={isTestMode}
+                effectiveDate={today}
+                onExitTestMode={onExitTestMode}
               />
             )}
           </>

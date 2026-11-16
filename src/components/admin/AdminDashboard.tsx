@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Question, GameTheme, Corner, AttemptRecord } from '../../types';
-import { PRESET_THEMES, DEFAULT_QUESTIONS, OFFICIAL_25_QUESTIONS } from '../../defaultQuestions';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Question, GameTheme, Corner, AttemptRecord, TestModeConfig } from '../../types';
+import { PRESET_THEMES, DEFAULT_QUESTIONS } from '../../defaultQuestions';
 import { storageService } from '../../services/storageService';
+import { sheetsSyncService, SyncStatus, OFFICIAL_SPREADSHEET_ID } from '../../services/sheetsSyncService';
 import { generateStandaloneHtml } from '../../exportStandaloneHtml';
 import { sounds } from '../../sound';
 import {
   ArrowLeft,
-  Plus,
   Trash2,
-  ArrowUp,
-  ArrowDown,
   Check,
   Sparkles,
   Download,
@@ -18,21 +16,27 @@ import {
   Sheet,
   Globe,
   Palette,
-  HelpCircle,
   FileDown,
-  CheckCircle2,
-  XCircle,
   Copy,
   Users,
   Code2,
   Trophy,
   Calendar,
-  Award
+  RefreshCw,
+  FlaskConical,
+  Play,
+  ExternalLink,
+  Clock,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   calculateCompetitionMatrix,
   COMPETITION_DAYS,
   AUTHORIZED_PARTICIPANTS,
+  getSaoPauloDateString,
+  getSaoPauloTimeInfo,
+  isTimedKnockoutDay,
 } from '../../competition/competitionEngine';
 
 const DAY_TOPIC_TITLES: Record<number, string> = {
@@ -45,14 +49,31 @@ const DAY_TOPIC_TITLES: Record<number, string> = {
 
 interface AdminDashboardProps {
   onNavigateToGame: () => void;
+  onStartTestGame: (config: TestModeConfig) => void;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateToGame }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  onNavigateToGame,
+  onStartTestGame,
+}) => {
   // State from storageService
   const [questions, setQuestions] = useState<Question[]>(() => storageService.getQuestions());
   const [theme, setTheme] = useState<GameTheme>(() => storageService.getTheme());
   const [webhookUrl, setWebhookUrl] = useState<string>(() => storageService.getWebhookUrl());
   const [attempts, setAttempts] = useState<AttemptRecord[]>(() => storageService.getAttempts());
+
+  // Sincronização real com a planilha Google Sheets
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncMessage, setSyncMessage] = useState<string>('');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  // Modal de configuração do "Testar Jogo"
+  const todayStr = getSaoPauloDateString();
+  const defaultTestDate = COMPETITION_DAYS.some((d) => d.date === todayStr)
+    ? todayStr
+    : '2026-11-17';
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [testDate, setTestDate] = useState<string>(defaultTestDate);
 
   // UI state
   const [activeTab, setActiveTab] = useState<'questions' | 'theme' | 'sheets' | 'export' | 'players'>('questions');
@@ -64,15 +85,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateToGame
   const [testWebhookMessage, setTestWebhookMessage] = useState('');
   const [copiedCodeType, setCopiedCodeType] = useState<string | null>(null);
 
-  // Sync state if changed externally
+  const handleSyncSheets = useCallback(async () => {
+    setSyncStatus('loading');
+    const result = await sheetsSyncService.fetchAllAttempts(webhookUrl);
+    setAttempts(result.attempts);
+    setSyncStatus(result.status);
+    setSyncMessage(result.message);
+    setLastSyncedAt(
+      new Date().toLocaleTimeString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    );
+  }, [webhookUrl]);
+
+  // Busca real da planilha ao abrir o painel
+  useEffect(() => {
+    handleSyncSheets();
+  }, [handleSyncSheets]);
+
+  // Sync local state if changed externally
   useEffect(() => {
     return storageService.subscribe(() => {
       setQuestions(storageService.getQuestions());
       setTheme(storageService.getTheme());
       setWebhookUrl(storageService.getWebhookUrl());
-      setAttempts(storageService.getAttempts());
+      handleSyncSheets();
     });
-  }, []);
+  }, [handleSyncSheets]);
 
   const cornerNames: Record<Corner, string> = {
     A: 'A (Sup. Esquerdo)',
@@ -292,23 +334,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateToGame
     URL.revokeObjectURL(url);
   };
 
-  // Clear attempts / played records
+  // Clear local browser cache only (never touches Google Sheets)
   const handleClearPlayedEmails = () => {
-    if (confirm('Deseja limpar todos os registros de tentativas? Isso permitirá que os colaboradores joguem novamente.')) {
+    if (
+      confirm(
+        'Deseja limpar apenas o cache local deste navegador? Os registros salvos na planilha oficial do Google Sheets NÃO serão apagados.'
+      )
+    ) {
       sounds.playBlip();
       storageService.clearPlayedEmails();
-      setAttempts([]);
+      handleSyncSheets();
     }
   };
 
-  const activeQuestionsCount = questions.filter((q) => q.ativo !== false).length;
   const standaloneHtml = generateStandaloneHtml(questions, theme, webhookUrl);
 
   const appsScriptCode = `/**
  * =========================================================================
  * GOOGLE APPS SCRIPT — COPA DO SGQ ACIM (NOVEMBRO 2026)
  * =========================================================================
+ * Inclui: gravação segura (doPost), trava de horário (08h-18h),
+ * coluna Tempo de Resposta e leitura do histórico para o Painel (doGet).
  */
+var SPREADSHEET_ID = "${OFFICIAL_SPREADSHEET_ID}";
+
 var GABARITO_OFICIAL = {
   // 16/11/2026
   "Q01": "B", "Q02": "C", "Q03": "C", "Q04": "B", "Q05": "A",
@@ -330,11 +379,34 @@ var PARTICIPANTES_AUTORIZADOS = [
   "estagioepp@acim.com.br"
 ];
 
+function getTargetSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  return ss.getActiveSheet();
+}
+
+function normalizeSheetDate(val) {
+  if (!val) return "";
+  if (val instanceof Date) return Utilities.formatDate(val, "America/Sao_Paulo", "yyyy-MM-dd");
+  var str = val.toString().trim();
+  var isoMatch = str.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
+  if (isoMatch) return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3];
+  var brMatch = str.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})/);
+  if (brMatch) return brMatch[3] + "-" + brMatch[2] + "-" + brMatch[1];
+  return str;
+}
+
+function normalizeSheetTimestamp(val) {
+  if (!val) return "";
+  if (val instanceof Date) return Utilities.formatDate(val, "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
+  return val.toString().trim();
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(15000);
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var sheet = getTargetSheet();
     if (sheet.getLastRow() === 0) {
       sheet.appendRow(["Data e Hora", "Nome", "E-mail", "Data da Rodada", "Gols (Acertos)", "Total", "Aproveitamento", "Detalhes dos Chutes", "Tempo de Resposta"]);
       sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
@@ -351,7 +423,7 @@ function doPost(e) {
 
     var email = (data.email || "").toString().trim().toLowerCase();
     var nome = (data.nome || data.name || "Jogador").toString().trim();
-    var rodadaData = (data.date || data.data || "").toString().trim();
+    var rodadaData = normalizeSheetDate(data.date || data.data || "");
     if (!rodadaData) rodadaData = Utilities.formatDate(new Date(), "America/Sao_Paulo", "yyyy-MM-dd");
 
     var isAuthorized = PARTICIPANTES_AUTORIZADOS.some(function(p) { return p.toLowerCase() === email; });
@@ -360,13 +432,22 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ success: false, error: "E-mail não autorizado." })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // Validação de horário oficial (08:00 às 18:00 Brasília, com tolerância para conclusões iniciadas antes das 18:00)
+    var now = new Date();
+    var spHour = Number(Utilities.formatDate(now, "America/Sao_Paulo", "H"));
+    var spMinute = Number(Utilities.formatDate(now, "America/Sao_Paulo", "m"));
+    var totalMinutes = spHour * 60 + spMinute;
+    if (!isAdminTest && (totalMinutes < (8 * 60 - 5) || totalMinutes > (18 * 60 + 10))) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Fora do horário oficial (08:00 às 18:00)." })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Bloqueio de duplicidade por e-mail + data
     var numRows = sheet.getLastRow();
     if (numRows > 1 && !isAdminTest) {
       var rangeValues = sheet.getRange(2, 1, numRows - 1, Math.max(sheet.getLastColumn(), 4)).getValues();
       for (var i = 0; i < rangeValues.length; i++) {
         var rowEmail = (rangeValues[i][2] || "").toString().trim().toLowerCase();
-        var rowDate = (rangeValues[i][3] || "").toString().trim();
+        var rowDate = normalizeSheetDate(rangeValues[i][3]);
         if (rowEmail === email && rowDate === rodadaData) {
           return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Tentativa já registrada para hoje." })).setMimeType(ContentService.MimeType.JSON);
         }
@@ -389,7 +470,39 @@ function doPost(e) {
 }
 
 function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({ status: "online", competicao: "Copa do SGQ ACIM 2026" })).setMimeType(ContentService.MimeType.JSON);
+  try {
+    var sheet = getTargetSheet();
+    var numRows = sheet.getLastRow();
+    var numCols = Math.max(sheet.getLastColumn(), 9);
+    var attempts = [];
+    if (numRows > 1) {
+      var values = sheet.getRange(2, 1, numRows - 1, numCols).getValues();
+      for (var i = 0; i < values.length; i++) {
+        var row = values[i];
+        var rowEmail = (row[2] || "").toString().trim().toLowerCase();
+        if (!rowEmail || rowEmail.indexOf("@") === -1) continue;
+        attempts.push({
+          timestamp: normalizeSheetTimestamp(row[0]),
+          name: (row[1] || "Jogador").toString().trim(),
+          email: rowEmail,
+          date: normalizeSheetDate(row[3]),
+          score: Number(row[4] || 0),
+          totalQuestions: Number(row[5] || 5) || 5,
+          percentage: (row[6] || "").toString().trim(),
+          answers: (row[7] || "").toString().trim(),
+          tempoResposta: (row[8] !== undefined && row[8] !== null) ? row[8].toString().trim() : "-"
+        });
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "online",
+      competicao: "Copa do SGQ ACIM 2026",
+      totalRegistros: attempts.length,
+      attempts: attempts
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", error: err.toString(), attempts: [] })).setMimeType(ContentService.MimeType.JSON);
+  }
 }`;
 
   return (
@@ -411,10 +524,23 @@ function doGet(e) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                sounds.playBlip();
+                setShowTestModal(true);
+              }}
+              className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow whitespace-nowrap shrink-0"
+              title="Testar qualquer rodada fora de horário sem alterar a planilha oficial"
+            >
+              <FlaskConical className="w-4 h-4" />
+              <span>Testar Jogo</span>
+            </button>
+
             <button
               onClick={handleSaveAll}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow whitespace-nowrap shrink-0"
             >
               {savedSuccess ? (
                 <>
@@ -431,7 +557,7 @@ function doGet(e) {
 
             <button
               onClick={onNavigateToGame}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors cursor-pointer flex items-center gap-1.5"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0"
               title="Voltar para a tela do jogador"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -884,23 +1010,88 @@ function doGet(e) {
                 <div>
                   <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                     <Users className="w-4 h-4 text-amber-400" />
-                    <span>Competição 2026 — Apuração dos Participantes Autorizados</span>
+                    <span>Competição 2026 — Apuração Real (Planilha + Sistema)</span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-1">
-                    Acompanhamento diário dos participantes autorizados (16 a 20 de novembro de 2026) e Modelo C de Eliminação.
+                    Acompanhamento diário dos participantes (16 a 20 de novembro · 08:00 às 18:00) sincronizado com a planilha oficial.
                   </p>
                 </div>
 
-                {attempts.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleClearPlayedEmails}
-                    className="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
+                    onClick={() => {
+                      sounds.playBlip();
+                      handleSyncSheets();
+                    }}
+                    disabled={syncStatus === 'loading'}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-slate-950 font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5 transition-colors whitespace-nowrap"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Zerar Tentativas Registradas</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'loading' ? 'animate-spin' : ''}`} />
+                    <span>{syncStatus === 'loading' ? 'Sincronizando...' : 'Atualizar da Planilha'}</span>
                   </button>
-                )}
+
+                  <a
+                    href={`https://docs.google.com/spreadsheets/d/${OFFICIAL_SPREADSHEET_ID}/edit?gid=0#gid=0`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Abrir Planilha</span>
+                  </a>
+
+                  {attempts.some((a) => a.source !== 'sheet') && (
+                    <button
+                      type="button"
+                      onClick={handleClearPlayedEmails}
+                      className="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                      title="Limpa apenas o cache local deste navegador sem afetar a planilha oficial"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Limpar Cache Local</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Barra de Status da Sincronização com Google Sheets */}
+              <div
+                className={`p-3.5 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-3 ${
+                  syncStatus === 'synced' || syncStatus === 'gviz_fallback'
+                    ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+                    : syncStatus === 'outdated_script'
+                    ? 'bg-amber-950/40 border-amber-500/50 text-amber-200'
+                    : syncStatus === 'error'
+                    ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-300'
+                }`}
+              >
+                <div className="flex items-start sm:items-center gap-2">
+                  {syncStatus === 'synced' || syncStatus === 'gviz_fallback' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  )}
+                  <span>{syncMessage || 'Conectando à planilha oficial...'}</span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {lastSyncedAt && (
+                    <span className="font-mono tabular-nums text-[11px] text-slate-400">
+                      Atualizado às {lastSyncedAt}
+                    </span>
+                  )}
+                  {syncStatus === 'outdated_script' && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('sheets')}
+                      className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-[11px] cursor-pointer whitespace-nowrap"
+                    >
+                      Copiar Script Atualizado
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* 4 Cards de Métricas Reais do Sistema */}
@@ -1080,20 +1271,27 @@ function doGet(e) {
                             const isHigh = attempt.score >= Math.ceil(total * 0.7);
                             const perc = Math.round((attempt.score / total) * 100);
                             return (
-                              <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
-                                <td className="px-4 py-3 text-slate-500 font-mono">{idx + 1}</td>
-                                <td className="px-4 py-3 font-semibold text-white">
-                                  {attempt.name || 'Jogador'}
+                              <tr key={`${attempt.email}-${attempt.date}-${idx}`} className="hover:bg-slate-900/40 transition-colors">
+                                <td className="px-4 py-3 text-slate-500 font-mono tabular-nums">{idx + 1}</td>
+                                <td className="px-4 py-3">
+                                  <div className="font-semibold text-white">{attempt.name || 'Jogador'}</div>
+                                  {attempt.answersSummary && (
+                                    <div className="text-[10px] text-slate-500 font-mono mt-0.5 max-w-xs truncate" title={attempt.answersSummary}>
+                                      {attempt.answersSummary}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-4 py-3 font-mono text-slate-400">
                                   {attempt.email}
                                 </td>
-                                <td className="px-4 py-3 text-center font-mono text-slate-300">
-                                  {attempt.date ? `${attempt.date.slice(8, 10)}/${attempt.date.slice(5, 7)}/${attempt.date.slice(0, 4)}` : '—'}
+                                <td className="px-4 py-3 text-center font-mono tabular-nums text-slate-300">
+                                  {attempt.date && attempt.date.includes('-')
+                                    ? `${attempt.date.slice(8, 10)}/${attempt.date.slice(5, 7)}/${attempt.date.slice(0, 4)}`
+                                    : attempt.date || '—'}
                                 </td>
                                 <td className="px-4 py-3 text-center">
                                   <span
-                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold font-mono text-xs border ${
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold font-mono tabular-nums text-xs border ${
                                       isHigh
                                         ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
                                         : 'bg-amber-950/80 text-amber-400 border-amber-500/40'
@@ -1102,14 +1300,17 @@ function doGet(e) {
                                     ⚽ {attempt.score}/{total}
                                   </span>
                                 </td>
-                                <td className="px-4 py-3 text-center font-mono text-xs text-slate-300">
+                                <td className="px-4 py-3 text-center font-mono tabular-nums text-xs text-slate-300">
                                   {perc}%
                                 </td>
                                 <td className="px-4 py-3 text-center font-mono tabular-nums text-xs text-amber-300">
                                   {attempt.tempoResposta || '—'}
                                 </td>
-                                <td className="px-4 py-3 text-right text-slate-400 font-mono text-[11px]">
-                                  {attempt.timestamp}
+                                <td className="px-4 py-3 text-right text-slate-400 font-mono tabular-nums text-[11px]">
+                                  <div>{attempt.timestamp}</div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {attempt.source === 'sheet' ? 'Planilha Oficial' : 'Cache Local'}
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1124,6 +1325,106 @@ function doGet(e) {
           );
         })()}
       </main>
+
+      {/* Modal: Configurar Testar Jogo (Qualquer data e fora de horário) */}
+      {showTestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-slate-900 border-2 border-amber-400/60 rounded-2xl p-6 text-slate-100 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <FlaskConical className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-base text-white">
+                  Testar Jogo (Modo Gestão)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTestModal(false)}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Simule qualquer rodada da Copa do SGQ mesmo fora do horário oficial (08:00 às 18:00), ignorando bloqueios de tentativa única ou eliminação. <strong>Nenhum dado será gravado na planilha oficial.</strong>
+            </p>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                Escolha a data da rodada para testar:
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {COMPETITION_DAYS.map((day) => {
+                  const selected = testDate === day.date;
+                  const timed = isTimedKnockoutDay(day.date);
+                  return (
+                    <button
+                      key={day.date}
+                      type="button"
+                      onClick={() => {
+                        sounds.playBlip();
+                        setTestDate(day.date);
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                        selected
+                          ? 'border-amber-400 bg-amber-400/15 text-white'
+                          : 'border-slate-800 bg-slate-950 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-xs">
+                          Dia {day.label}/2026 (Rodada {day.dayIndex})
+                        </span>
+                        {timed && (
+                          <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-mono mt-1">
+                        {day.questionIds[0]} a {day.questionIds[day.questionIds.length - 1]}
+                        {timed ? ' · Com Cronômetro' : ''}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-slate-400 flex items-center justify-between">
+              <span>Horário atual (Brasília):</span>
+              <span className="font-mono tabular-nums text-slate-200">
+                {getSaoPauloTimeInfo().formattedTime} · {getSaoPauloTimeInfo().isWithinHours ? 'Dentro de 08h–18h' : 'Fora de 08h–18h (Liberado no teste)'}
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowTestModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl text-slate-300 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playWhistle();
+                  setShowTestModal(false);
+                  onStartTestGame({
+                    active: true,
+                    simulatedDate: testDate,
+                    ignoreSchedule: true,
+                  });
+                }}
+                className="px-5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow"
+              >
+                <Play className="w-3.5 h-3.5 fill-slate-950" />
+                <span>Iniciar Simulação</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* JSON Import/Export Modal */}
       {showJsonModal && (

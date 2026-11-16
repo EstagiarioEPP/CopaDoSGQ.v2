@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlayerInfo, GameAnswerRecord, GameTheme } from '../types';
-import { Share2, Check } from 'lucide-react';
+import { Share2, Check, FlaskConical, ArrowLeft } from 'lucide-react';
 import { sounds } from '../sound';
 import { storageService } from '../services/storageService';
 
@@ -12,6 +12,9 @@ interface EndScreenProps {
   theme: GameTheme;
   webhookUrl: string;
   isTimedRound?: boolean;
+  isTestMode?: boolean;
+  effectiveDate?: string;
+  onExitTestMode?: () => void;
 }
 
 export const EndScreen: React.FC<EndScreenProps> = ({
@@ -22,6 +25,9 @@ export const EndScreen: React.FC<EndScreenProps> = ({
   theme,
   webhookUrl,
   isTimedRound = false,
+  isTestMode = false,
+  effectiveDate,
+  onExitTestMode,
 }) => {
   const [copied, setCopied] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
@@ -59,16 +65,19 @@ export const EndScreen: React.FC<EndScreenProps> = ({
     message = 'Obrigado pela sua participação! Fique ligado nos próximos dias para as novas rodadas da Copa do SGQ!';
   }
 
-  // Registrar tentativa (nome, email, acertos, data, tempo) por data da rodada
+  // Registrar tentativa oficial apenas fora do Modo Teste
   useEffect(() => {
+    if (isTestMode) return;
     if (playerInfo.email && playerInfo.email.trim()) {
       const cleanEmail = playerInfo.email.trim().toLowerCase();
-      const today = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(new Date());
+      const today =
+        effectiveDate ||
+        new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Sao_Paulo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date());
 
       // Gravar registro completo da tentativa por data para a Área do Gestor (Nome + Acertos + Data + Tempo)
       storageService.recordAttempt({
@@ -84,18 +93,20 @@ export const EndScreen: React.FC<EndScreenProps> = ({
           : undefined,
       });
     }
-  }, [playerInfo.name, playerInfo.email, score, totalQuestions, tempoRespostaStr, isTimedRound, records]);
+  }, [isTestMode, effectiveDate, playerInfo.name, playerInfo.email, score, totalQuestions, tempoRespostaStr, isTimedRound, records]);
 
-  // Auto-send result to Google Sheets Webhook silently if configured
+  // Auto-send result to Google Sheets Webhook silently if configured (never in Test Mode)
   useEffect(() => {
-    if (!webhookUrl || webhookUrl.trim() === '') return;
+    if (isTestMode || !webhookUrl || webhookUrl.trim() === '') return;
 
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Sao_Paulo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
+    const today =
+      effectiveDate ||
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
 
     setWebhookStatus('sending');
     const payload = {
@@ -140,7 +151,7 @@ export const EndScreen: React.FC<EndScreenProps> = ({
         console.error('Webhook error:', err);
         setWebhookStatus('error');
       });
-  }, [webhookUrl, playerInfo, theme, score, totalQuestions, percentage, records, medalTitle, tempoRespostaStr]);
+  }, [isTestMode, effectiveDate, webhookUrl, playerInfo, theme, score, totalQuestions, percentage, records, medalTitle, tempoRespostaStr]);
 
   const handleCopyShare = () => {
     sounds.playBlip();
@@ -218,22 +229,29 @@ export const EndScreen: React.FC<EndScreenProps> = ({
         )}
       </div>
 
-      {/* Webhook Status Notification if present */}
-      {webhookUrl && (
-        <div className="mb-6 p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span>Registro da rodada:</span>
-          {webhookStatus === 'sending' && (
-            <span className="text-amber-400 flex items-center gap-1">Registrando pontuação...</span>
-          )}
-          {webhookStatus === 'success' && (
-            <span className="text-emerald-400 flex items-center gap-1 font-semibold">
-              <Check className="w-3.5 h-3.5" /> Placar Registrado!
-            </span>
-          )}
-          {webhookStatus === 'error' && (
-            <span className="text-rose-400">Falha ao registrar</span>
-          )}
+      {/* Webhook Status Notification or Test Mode Notice */}
+      {isTestMode ? (
+        <div className="mb-6 p-3 bg-amber-950/40 rounded-xl border border-amber-500/40 flex items-center gap-2 text-xs text-amber-200">
+          <FlaskConical className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>Modo Teste Administrativo — Simulação concluída sem gravar na planilha oficial.</span>
         </div>
+      ) : (
+        webhookUrl && (
+          <div className="mb-6 p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between text-xs text-slate-400">
+            <span>Registro da rodada:</span>
+            {webhookStatus === 'sending' && (
+              <span className="text-amber-400 flex items-center gap-1">Registrando pontuação...</span>
+            )}
+            {webhookStatus === 'success' && (
+              <span className="text-emerald-400 flex items-center gap-1 font-semibold">
+                <Check className="w-3.5 h-3.5" /> Placar Registrado!
+              </span>
+            )}
+            {webhookStatus === 'error' && (
+              <span className="text-rose-400">Falha ao registrar</span>
+            )}
+          </div>
+        )
       )}
 
       {/* Cobranças detalhadas */}
@@ -278,20 +296,36 @@ export const EndScreen: React.FC<EndScreenProps> = ({
         </div>
       </div>
 
-      {/* Action Button: Copiar Resultado */}
+      {/* Action Button: Copiar Resultado / Voltar ao Painel em Modo Teste */}
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           onClick={handleCopyShare}
-          className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+          className="flex-1 py-3.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg"
         >
           {copied ? <Check className="w-4 h-4 text-slate-950" /> : <Share2 className="w-4 h-4" />}
           <span>{copied ? 'Resultado Copiado!' : 'Copiar Meu Resultado'}</span>
         </button>
+
+        {isTestMode && onExitTestMode && (
+          <button
+            type="button"
+            onClick={() => {
+              sounds.playBlip();
+              onExitTestMode();
+            }}
+            className="py-3.5 px-5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg whitespace-nowrap"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Voltar ao Painel</span>
+          </button>
+        )}
       </div>
 
       {/* Aviso de tentativa única final */}
       <div className="mt-4 text-center text-xs text-slate-500">
-        Esta rodada foi registrada. Fique ligado nos próximos dias para novas baterias da Copa do SGQ!
+        {isTestMode
+          ? 'Teste encerrado. Nenhum histórico oficial foi alterado.'
+          : 'Esta rodada foi registrada. Fique ligado nos próximos dias para novas baterias da Copa do SGQ!'}
       </div>
     </div>
   );
