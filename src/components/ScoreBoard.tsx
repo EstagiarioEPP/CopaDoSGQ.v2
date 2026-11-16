@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameAnswerRecord, GameTheme } from '../types';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Volume2, VolumeX, Timer } from 'lucide-react';
 import { sounds } from '../sound';
 
 interface ScoreBoardProps {
@@ -12,6 +12,9 @@ interface ScoreBoardProps {
   theme: GameTheme;
   isMuted: boolean;
   onToggleMute: () => void;
+  isTimedRound?: boolean;
+  currentQuestionTenths?: number;
+  totalTimeTenths?: number;
 }
 
 export const ScoreBoard: React.FC<ScoreBoardProps> = ({
@@ -22,6 +25,9 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   playerName,
   isMuted,
   onToggleMute,
+  isTimedRound = false,
+  currentQuestionTenths = 0,
+  totalTimeTenths = 0,
 }) => {
   return (
     <div className="w-full max-w-5xl mx-auto mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-900/90 border-2 border-slate-800 rounded-xl backdrop-blur-md shadow-md text-slate-200">
@@ -76,8 +82,21 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
         })}
       </div>
 
-      {/* Score and Controls */}
-      <div className="flex items-center gap-3">
+      {/* Score, Timer (Dia 17) and Controls */}
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        {/* Cronômetro em décimos de segundo (exibido apenas na rodada cronometrada do Dia 17) */}
+        {isTimedRound && (
+          <div
+            className="flex items-center gap-1.5 bg-amber-950/70 border border-amber-400/50 px-2.5 py-1 rounded-lg"
+            title={`Tempo acumulado nas anteriores: ${totalTimeTenths.toFixed(1)}s`}
+          >
+            <Timer className="w-3.5 h-3.5 text-amber-400" />
+            <span className="font-mono tabular-nums text-xs sm:text-sm font-bold text-amber-300">
+              {currentQuestionTenths.toFixed(1)}s
+            </span>
+          </div>
+        )}
+
         {/* Score count */}
         <div className="flex items-center gap-1.5 bg-emerald-950/70 border border-emerald-500/40 px-3 py-1 rounded-lg">
           <span className="text-xs text-emerald-400 font-mono">GOLS:</span>

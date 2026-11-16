@@ -2,6 +2,8 @@
 
 class SoundManager {
   private ctx: AudioContext | null = null;
+  private tickInterval: number | null = null;
+  private tickStep: boolean = false;
   public isMuted: boolean = false;
 
   private initContext() {
@@ -215,6 +217,87 @@ class SoundManager {
 
       osc.start(t);
       osc.stop(t + 0.3);
+    } catch {
+      // ignore
+    }
+  }
+
+  public playTick(isHigh: boolean = true) {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    try {
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(isHigh ? 980 : 740, t);
+
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(t);
+      osc.stop(t + 0.045);
+    } catch {
+      // ignore
+    }
+  }
+
+  public startTickTock() {
+    this.stopTickTock();
+    this.tickStep = true;
+    this.playTick(true);
+
+    if (typeof window !== 'undefined') {
+      this.tickInterval = window.setInterval(() => {
+        this.tickStep = !this.tickStep;
+        this.playTick(this.tickStep);
+      }, 500);
+    }
+  }
+
+  public stopTickTock() {
+    if (this.tickInterval !== null && typeof window !== 'undefined') {
+      window.clearInterval(this.tickInterval);
+      this.tickInterval = null;
+    }
+  }
+
+  public playCoachWhistle() {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    try {
+      const t = this.ctx.currentTime;
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'triangle';
+
+      osc1.frequency.setValueAtTime(2950, t);
+      osc2.frequency.setValueAtTime(3180, t);
+
+      gain.gain.setValueAtTime(0.01, t);
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.03);
+      gain.gain.setValueAtTime(0.2, t + 0.16);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc1.start(t);
+      osc2.start(t);
+      osc1.stop(t + 0.31);
+      osc2.stop(t + 0.31);
     } catch {
       // ignore
     }

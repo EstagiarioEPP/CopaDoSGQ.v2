@@ -24,6 +24,25 @@ export const AUTHORIZED_PARTICIPANTS: readonly string[] = [
   'estagioepp@acim.com.br',
 ] as const;
 
+// LISTA TEMPORÁRIA DE E-MAILS ELIMINADOS NO MATA-MATA (PARA BLOQUEIO IMEDIATO ENTRE DISPOSITIVOS)
+// Adicione aqui os e-mails em minúsculas dos colaboradores eliminados antes do deploy:
+export const ELIMINATED_PARTICIPANTS: readonly string[] = [
+  // Exemplo: 'colaborador@acim.com.br',
+] as const;
+
+// DATA EXCLUSIVA DA RODADA CRONOMETRADA DE DESEMPATE (DIA 17)
+export const TIMED_KNOCKOUT_DATE = '2026-11-17';
+
+export function isTimedKnockoutDay(dateStr: string): boolean {
+  return dateStr === TIMED_KNOCKOUT_DATE;
+}
+
+export function isEliminatedParticipant(email: string | undefined | null): boolean {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return ELIMINATED_PARTICIPANTS.some((p) => p.toLowerCase() === clean);
+}
+
 // 5 DIAS DA COMPETIÇÃO
 export const COMPETITION_DAYS = [
   { date: '2026-11-16', label: '16/11', dayIndex: 1, questionIds: ['Q01', 'Q02', 'Q03', 'Q04', 'Q05'] },
@@ -54,7 +73,7 @@ export function getSaoPauloDateString(baseDate: Date = new Date()): string {
 }
 
 /**
- * Verifica se um e-mail é de um dos 4 participantes autorizados.
+ * Verifica se um e-mail é de um dos participantes autorizados.
  */
 export function isAuthorizedParticipant(email: string | undefined | null): boolean {
   if (!email) return false;
@@ -193,6 +212,16 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
     }
   });
 
+  // Garante marcação de eliminados configurados no array temporário de bloqueio
+  ELIMINATED_PARTICIPANTS.forEach((elimEmail) => {
+    const clean = elimEmail.trim().toLowerCase();
+    if (matrix[clean] && matrix[clean].status !== 'Eliminado') {
+      matrix[clean].status = 'Eliminado';
+      matrix[clean].eliminatedDate = matrix[clean].eliminatedDate || 'Mata-Mata';
+      activeEmails = activeEmails.filter((e) => e.toLowerCase() !== clean);
+    }
+  });
+
   // Cálculo da pontuação total acumulada
   Object.values(matrix).forEach((row) => {
     row.total = Object.values(row.dias).reduce<number>((acc, score) => acc + (score || 0), 0);
@@ -226,7 +255,7 @@ export function canParticipantPlayToday(
   email: string,
   dateStr: string,
   attempts: AttemptRecord[]
-): { allowed: boolean; reason?: string } {
+): { allowed: boolean; reason?: string; isEliminated?: boolean; eliminatedDate?: string } {
   if (!email || !email.trim()) {
     return { allowed: false, reason: 'Informe seu e-mail corporativo para jogar.' };
   }
@@ -241,7 +270,29 @@ export function canParticipantPlayToday(
     };
   }
 
-  // 2. Verificação se já jogou HOJE (e-mail + data)
+  // 2. Verificação direta no array temporário de eliminados no frontend
+  if (isEliminatedParticipant(cleanEmail)) {
+    return {
+      allowed: false,
+      isEliminated: true,
+      eliminatedDate: 'Fase Anterior',
+      reason: 'Você foi eliminado do mata-mata e não pode disputar esta rodada.',
+    };
+  }
+
+  // 3. Verificação de eliminação na apuração local de dias anteriores
+  const matrix = calculateCompetitionMatrix(attempts);
+  const participantRow = matrix.find((r) => r.email.toLowerCase() === cleanEmail);
+  if (participantRow && participantRow.status === 'Eliminado') {
+    return {
+      allowed: false,
+      isEliminated: true,
+      eliminatedDate: participantRow.eliminatedDate || 'dias anteriores',
+      reason: `Você foi eliminado da competição na rodada de ${participantRow.eliminatedDate || 'dias anteriores'} e não pode realizar novas cobranças.`,
+    };
+  }
+
+  // 4. Verificação se já jogou HOJE (e-mail + data)
   const alreadyPlayedToday = attempts.some(
     (a) => a.email.toLowerCase() === cleanEmail && a.date === dateStr
   );
@@ -249,16 +300,6 @@ export function canParticipantPlayToday(
     return {
       allowed: false,
       reason: `⚠️ Você já realizou sua tentativa oficial de hoje (${dateStr.slice(8, 10)}/${dateStr.slice(5, 7)})! É permitida 1 tentativa por dia. Volte amanhã para a próxima rodada!`,
-    };
-  }
-
-  // 3. Verificação de eliminação em dias anteriores
-  const matrix = calculateCompetitionMatrix(attempts);
-  const participantRow = matrix.find((r) => r.email.toLowerCase() === cleanEmail);
-  if (participantRow && participantRow.status === 'Eliminado') {
-    return {
-      allowed: false,
-      reason: `⚠️ Você foi eliminado da competição na rodada de ${participantRow.eliminatedDate || 'dias anteriores'} e não pode realizar novas cobranças.`,
     };
   }
 

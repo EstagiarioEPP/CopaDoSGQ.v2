@@ -336,8 +336,10 @@ function doPost(e) {
     lock.waitLock(15000);
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(["Data e Hora", "Nome", "E-mail", "Data da Rodada", "Gols (Acertos)", "Total", "Aproveitamento", "Detalhes dos Chutes"]);
-      sheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
+      sheet.appendRow(["Data e Hora", "Nome", "E-mail", "Data da Rodada", "Gols (Acertos)", "Total", "Aproveitamento", "Detalhes dos Chutes", "Tempo de Resposta"]);
+      sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
+    } else if (!sheet.getRange(1, 9).getValue()) {
+      sheet.getRange(1, 9).setValue("Tempo de Resposta").setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
     }
 
     var data = {};
@@ -375,9 +377,10 @@ function doPost(e) {
     var officialScore = Number(data.score !== undefined ? data.score : (data.gols || 0));
     var percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
     var timestampStr = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
+    var tempoResposta = (data.tempoResposta !== undefined && data.tempoResposta !== null && data.tempoResposta !== "") ? data.tempoResposta.toString() : "-";
 
-    sheet.appendRow([timestampStr, nome, email, rodadaData, officialScore, totalQuestions, percentage, data.answers || "-"]);
-    return ContentService.createTextOutput(JSON.stringify({ success: true, score: officialScore, percentage: percentage })).setMimeType(ContentService.MimeType.JSON);
+    sheet.appendRow([timestampStr, nome, email, rodadaData, officialScore, totalQuestions, percentage, data.answers || "-", tempoResposta]);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, score: officialScore, percentage: percentage, tempoResposta: tempoResposta })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
   } finally {
@@ -1067,6 +1070,7 @@ function doGet(e) {
                             <th className="px-4 py-3 text-center">Data da Rodada</th>
                             <th className="px-4 py-3 text-center">Acertos (Gols)</th>
                             <th className="px-4 py-3 text-center">Aproveitamento</th>
+                            <th className="px-4 py-3 text-center">Tempo</th>
                             <th className="px-4 py-3 text-right">Data e Horário do Registro</th>
                           </tr>
                         </thead>
@@ -1100,6 +1104,9 @@ function doGet(e) {
                                 </td>
                                 <td className="px-4 py-3 text-center font-mono text-xs text-slate-300">
                                   {perc}%
+                                </td>
+                                <td className="px-4 py-3 text-center font-mono tabular-nums text-xs text-amber-300">
+                                  {attempt.tempoResposta || '—'}
                                 </td>
                                 <td className="px-4 py-3 text-right text-slate-400 font-mono text-[11px]">
                                   {attempt.timestamp}

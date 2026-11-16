@@ -29,6 +29,8 @@ export interface AttemptRecord {
   date: string; // Formato YYYY-MM-DD (ex: 2026-11-16)
   timestamp: string;
   dayIndex?: number; // 1 a 5
+  tempoResposta?: string; // Tempo total da rodada em décimos de segundo (ex: "18.4s")
+  temposPorPergunta?: number[]; // Tempos individuais por pergunta em décimos (ex: [4.2, 3.8, ...])
 }
 
 export interface ParticipantMatrixRow {
@@ -48,9 +50,21 @@ export interface GameAnswerRecord {
   correctChoice: Corner;
   correctText: string;
   isCorrect: boolean;
+  responseTimeTenths?: number; // Tempo desta pergunta em décimos de segundo (ex: 4.2)
 }
 
-export type GamePhase = 'START' | 'COUNTDOWN' | 'AIMING' | 'SHOOTING' | 'RESULT_REVEAL' | 'GAME_OVER';
+export type GamePhase =
+  | 'START'
+  | 'ELIMINATED'
+  | 'TIMER_WARNING'
+  | 'COUNTDOWN'
+  | 'AIMING'
+  | 'SHOOTING'
+  | 'RESULT_REVEAL'
+  // Ganchos estruturais para rodadas futuras (Dias 18 e 19):
+  | 'VAR_REVIEW' // Dia 18: jogador não é impedido de jogar, mas poderá escrever texto extra
+  | 'GOLDEN_KICK' // Dia 19: cenário sem múltipla escolha
+  | 'GAME_OVER';
 
 export interface GameTheme {
   id: string;

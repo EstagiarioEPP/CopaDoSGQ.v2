@@ -62,7 +62,7 @@ function doPost(e) {
 
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
-    // Cria cabeçalho retrocompatível se a planilha for nova
+    // Cria cabeçalho retrocompatível se a planilha for nova, ou adiciona a 9ª coluna sem afetar colunas 1-8 existentes
     if (sheet.getLastRow() === 0) {
       sheet.appendRow([
         "Data e Hora",
@@ -72,9 +72,16 @@ function doPost(e) {
         "Gols (Acertos)",
         "Total",
         "Aproveitamento",
-        "Detalhes dos Chutes"
+        "Detalhes dos Chutes",
+        "Tempo de Resposta"
       ]);
-      sheet.getRange(1, 1, 1, 8)
+      sheet.getRange(1, 1, 1, 9)
+        .setFontWeight("bold")
+        .setBackground("#065f46")
+        .setFontColor("#ffffff");
+    } else if (!sheet.getRange(1, 9).getValue()) {
+      sheet.getRange(1, 9)
+        .setValue("Tempo de Resposta")
         .setFontWeight("bold")
         .setBackground("#065f46")
         .setFontColor("#ffffff");
@@ -166,8 +173,11 @@ function doPost(e) {
 
     var percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
     var timestampStr = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
+    var tempoResposta = (data.tempoResposta !== undefined && data.tempoResposta !== null && data.tempoResposta !== "")
+      ? data.tempoResposta.toString()
+      : "-";
 
-    // 4. Grava a linha de resultado oficial na planilha
+    // 4. Grava a linha de resultado oficial na planilha (9ª coluna = Tempo de Resposta)
     sheet.appendRow([
       timestampStr,
       nome,
@@ -176,7 +186,8 @@ function doPost(e) {
       officialScore,
       totalQuestions,
       percentage,
-      answersSummary
+      answersSummary,
+      tempoResposta
     ]);
 
     return ContentService.createTextOutput(JSON.stringify({
@@ -184,6 +195,7 @@ function doPost(e) {
       score: officialScore,
       total: totalQuestions,
       percentage: percentage,
+      tempoResposta: tempoResposta,
       message: "Resultado gravado com sucesso na Copa do SGQ!"
     })).setMimeType(ContentService.MimeType.JSON);
 

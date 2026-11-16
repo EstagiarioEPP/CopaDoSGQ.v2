@@ -14,6 +14,7 @@ interface StartScreenProps {
   playerInfo: PlayerInfo;
   onUpdatePlayer: (info: PlayerInfo) => void;
   onStartGame: () => void;
+  onEliminated?: (info: { name: string; email: string; eliminatedDate?: string }) => void;
   totalQuestions: number;
 }
 
@@ -22,6 +23,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   playerInfo,
   onUpdatePlayer,
   onStartGame,
+  onEliminated,
   totalQuestions,
 }) => {
   const [name, setName] = useState(playerInfo.name);
@@ -44,13 +46,22 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Validação oficial: 4 participantes autorizados + tentativa única por data + não eliminado
+    // Validação oficial: participantes autorizados + bloqueio de eliminados + tentativa única por data
     const attempts = storageService.getAttempts();
     const check = canParticipantPlayToday(cleanEmail, today, attempts);
 
     if (!check.allowed) {
-      setErrorMsg(check.reason || 'Participação não autorizada.');
       sounds.playBuzzer();
+      if (check.isEliminated && onEliminated) {
+        onUpdatePlayer({ name: name.trim(), email: cleanEmail });
+        onEliminated({
+          name: name.trim(),
+          email: cleanEmail,
+          eliminatedDate: check.eliminatedDate,
+        });
+        return;
+      }
+      setErrorMsg(check.reason || 'Participação não autorizada.');
       return;
     }
 

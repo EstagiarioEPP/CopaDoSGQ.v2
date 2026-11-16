@@ -11,6 +11,7 @@ interface EndScreenProps {
   playerInfo: PlayerInfo;
   theme: GameTheme;
   webhookUrl: string;
+  isTimedRound?: boolean;
 }
 
 export const EndScreen: React.FC<EndScreenProps> = ({
@@ -20,11 +21,15 @@ export const EndScreen: React.FC<EndScreenProps> = ({
   playerInfo,
   theme,
   webhookUrl,
+  isTimedRound = false,
 }) => {
   const [copied, setCopied] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
 
   const percentage = Math.round((score / totalQuestions) * 100);
+  const totalTimeTenths = records.reduce((acc, r) => acc + (r.responseTimeTenths || 0), 0);
+  const roundedTotalTime = Math.round(totalTimeTenths * 10) / 10;
+  const tempoRespostaStr = isTimedRound ? `${roundedTotalTime.toFixed(1)}s` : '';
 
   // Medalha e mensagens personalizadas
   let medalIcon: string | null = null;
@@ -54,8 +59,7 @@ export const EndScreen: React.FC<EndScreenProps> = ({
     message = 'Obrigado pela sua participação! Fique ligado nos próximos dias para as novas rodadas da Copa do SGQ!';
   }
 
-  // Registrar tentativa (nome, email, acertos) e impedir repetição da rodada
-  // Registrar tentativa (nome, email, acertos, data) por data da rodada
+  // Registrar tentativa (nome, email, acertos, data, tempo) por data da rodada
   useEffect(() => {
     if (playerInfo.email && playerInfo.email.trim()) {
       const cleanEmail = playerInfo.email.trim().toLowerCase();
@@ -66,7 +70,7 @@ export const EndScreen: React.FC<EndScreenProps> = ({
         day: '2-digit',
       }).format(new Date());
 
-      // Gravar registro completo da tentativa por data para a Área do Gestor (Nome + Acertos + Data)
+      // Gravar registro completo da tentativa por data para a Área do Gestor (Nome + Acertos + Data + Tempo)
       storageService.recordAttempt({
         name: playerInfo.name || 'Jogador',
         email: cleanEmail,
@@ -74,9 +78,13 @@ export const EndScreen: React.FC<EndScreenProps> = ({
         totalQuestions,
         date: today,
         timestamp: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+        tempoResposta: tempoRespostaStr || undefined,
+        temposPorPergunta: isTimedRound
+          ? records.map((r) => r.responseTimeTenths || 0)
+          : undefined,
       });
     }
-  }, [playerInfo.name, playerInfo.email, score, totalQuestions]);
+  }, [playerInfo.name, playerInfo.email, score, totalQuestions, tempoRespostaStr, isTimedRound, records]);
 
   // Auto-send result to Google Sheets Webhook silently if configured
   useEffect(() => {
@@ -106,7 +114,14 @@ export const EndScreen: React.FC<EndScreenProps> = ({
       percentage: `${percentage}%`,
       aproveitamento: `${percentage}%`,
       medalha: medalTitle || 'Sem medalha',
-      answers: records.map((r, i) => `Q${i + 1}: [${r.userChoice}] ${r.isCorrect ? 'Gol' : 'Defesa'}`).join(' | '),
+      tempoResposta: tempoRespostaStr || '-',
+      answers: records
+        .map((r, i) => {
+          const timeSuffix =
+            r.responseTimeTenths !== undefined ? ` (${r.responseTimeTenths.toFixed(1)}s)` : '';
+          return `Q${i + 1}: [${r.userChoice}] ${r.isCorrect ? 'Gol' : 'Defesa'}${timeSuffix}`;
+        })
+        .join(' | '),
     };
 
     // Google Apps Script requires simple CORS requests (text/plain) to avoid OPTIONS preflight rejection
@@ -125,12 +140,13 @@ export const EndScreen: React.FC<EndScreenProps> = ({
         console.error('Webhook error:', err);
         setWebhookStatus('error');
       });
-  }, [webhookUrl, playerInfo, theme, score, totalQuestions, percentage, records, medalTitle]);
+  }, [webhookUrl, playerInfo, theme, score, totalQuestions, percentage, records, medalTitle, tempoRespostaStr]);
 
   const handleCopyShare = () => {
     sounds.playBlip();
     const medalText = medalIcon ? `\n🏅 ${medalTitle}` : '';
-    const text = `🏆 Resultado na ${theme.title} (ACIM):\n👤 Colaborador: ${playerInfo.name}\n⚽ Gols: ${score}/${totalQuestions} (${percentage}%)${medalText}\nFique ligado nos próximos dias!`;
+    const timeText = tempoRespostaStr ? `\n⏱️ Tempo Total: ${tempoRespostaStr}` : '';
+    const text = `🏆 Resultado na ${theme.title} (ACIM):\n👤 Colaborador: ${playerInfo.name}\n⚽ Gols: ${score}/${totalQuestions} (${percentage}%)${timeText}${medalText}\nFique ligado nos próximos dias!`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
@@ -170,7 +186,7 @@ export const EndScreen: React.FC<EndScreenProps> = ({
       </div>
 
       {/* Big Score Cards */}
-      <div className="grid grid-cols-3 gap-3 mb-6 text-center">
+      <div className={`grid gap-3 mb-6 text-center ${isTimedRound ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
         <div className="p-3 sm:p-4 bg-slate-950/80 border-2 border-slate-800 rounded-2xl">
           <span className="text-[11px] sm:text-xs text-slate-400 font-mono block">GOLS MARCADOS</span>
           <span className="font-['Press_Start_2P'] text-lg sm:text-2xl text-emerald-400 font-bold mt-1 block">
@@ -191,6 +207,15 @@ export const EndScreen: React.FC<EndScreenProps> = ({
             {percentage}%
           </span>
         </div>
+
+        {isTimedRound && (
+          <div className="p-3 sm:p-4 bg-slate-950/80 border-2 border-amber-500/40 rounded-2xl">
+            <span className="text-[11px] sm:text-xs text-amber-300 font-mono block">TEMPO TOTAL</span>
+            <span className="font-['Press_Start_2P'] text-base sm:text-xl text-amber-400 font-bold mt-1 block tabular-nums">
+              {tempoRespostaStr}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Webhook Status Notification if present */}
@@ -226,9 +251,14 @@ export const EndScreen: React.FC<EndScreenProps> = ({
                   : 'bg-rose-950/20 border-rose-500/30'
               }`}
             >
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-1 gap-2">
                 <span className="font-bold text-xs text-white">
                   Pênalti #{idx + 1}
+                  {rec.responseTimeTenths !== undefined && (
+                    <span className="ml-2 font-mono text-[11px] text-amber-300 tabular-nums">
+                      ({rec.responseTimeTenths.toFixed(1)}s)
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`text-[10px] font-['Press_Start_2P'] px-2 py-0.5 rounded ${

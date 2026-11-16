@@ -1,19 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { Question, GameTheme, PlayerInfo, GameAnswerRecord, Corner } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Question, GameTheme, PlayerInfo, GameAnswerRecord, Corner, GamePhase } from '../types';
 import { storageService } from '../services/storageService';
 import { StadiumField } from '../components/StadiumField';
 import { ScoreBoard } from '../components/ScoreBoard';
 import { StartScreen } from '../components/StartScreen';
 import { EndScreen } from '../components/EndScreen';
+import { EliminatedScreen } from '../components/EliminatedScreen';
+import { TimerWarningModal } from '../components/TimerWarningModal';
 import { sounds } from '../sound';
 import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
 
-import { getSaoPauloDateString, getQuestionsForDate } from '../competition/competitionEngine';
+import {
+  getSaoPauloDateString,
+  getQuestionsForDate,
+  isTimedKnockoutDay,
+} from '../competition/competitionEngine';
 
 interface GamePageProps {}
 
 export const GamePage: React.FC<GamePageProps> = () => {
   const today = getSaoPauloDateString();
+  const isTimedRound = isTimedKnockoutDay(today);
   const dailyQuestions = getQuestionsForDate(today);
 
   // Carrega as 5 perguntas correspondentes ao dia de hoje da competição
@@ -46,13 +53,23 @@ export const GamePage: React.FC<GamePageProps> = () => {
   }, [today]);
 
   // Game Flow State
-  const [phase, setPhase] = useState<'START' | 'AIMING' | 'SHOOTING' | 'RESULT_REVEAL' | 'GAME_OVER'>('START');
+  const [phase, setPhase] = useState<GamePhase>('START');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [selectedCorner, setSelectedCorner] = useState<Corner | null>(null);
   const [records, setRecords] = useState<GameAnswerRecord[]>([]);
   const [playerInfo, setPlayerInfo] = useState<PlayerInfo>({ name: '', email: '' });
+  const [eliminatedInfo, setEliminatedInfo] = useState<{
+    name: string;
+    email: string;
+    eliminatedDate?: string;
+  } | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+
+  // Cronômetro em décimos de segundo (Dia 17)
+  const questionStartTimeRef = useRef<number | null>(null);
+  const [currentQuestionTenths, setCurrentQuestionTenths] = useState<number>(0);
+  const totalTimeTenths = records.reduce((acc, r) => acc + (r.responseTimeTenths || 0), 0);
 
   // Result of current kick
   const [currentResult, setCurrentResult] = useState<{
@@ -60,6 +77,31 @@ export const GamePage: React.FC<GamePageProps> = () => {
     ballCorner: Corner;
     keeperCorner: Corner;
   } | null>(null);
+
+  // Cronômetro em décimos de segundo e áudio tic-tac exclusivamente durante AIMING na rodada cronometrada
+  useEffect(() => {
+    if (phase !== 'AIMING' || !isTimedRound) {
+      sounds.stopTickTock();
+      return;
+    }
+
+    const startTime = Date.now();
+    questionStartTimeRef.current = startTime;
+    setCurrentQuestionTenths(0);
+    sounds.startTickTock();
+
+    const intervalId = window.setInterval(() => {
+      if (questionStartTimeRef.current !== null) {
+        const elapsedTenths = Math.round(((Date.now() - questionStartTimeRef.current) / 1000) * 10) / 10;
+        setCurrentQuestionTenths(elapsedTenths);
+      }
+    }, 100);
+
+    return () => {
+      window.clearInterval(intervalId);
+      sounds.stopTickTock();
+    };
+  }, [phase, currentIndex, isTimedRound]);
 
   // Sound toggle
   const handleToggleMute = () => {
@@ -74,12 +116,37 @@ export const GamePage: React.FC<GamePageProps> = () => {
     setRecords([]);
     setSelectedCorner(null);
     setCurrentResult(null);
+    setCurrentQuestionTenths(0);
+    questionStartTimeRef.current = null;
+    if (isTimedRound) {
+      setPhase('TIMER_WARNING');
+    } else {
+      setPhase('AIMING');
+    }
+  };
+
+  // Confirm pre-round timed warning modal (Dia 17)
+  const handleConfirmTimedStart = () => {
+    sounds.playWhistle();
     setPhase('AIMING');
   };
 
   // When participant clicks one of the 4 corners (A, B, C, D)
   const handleSelectCorner = (corner: Corner) => {
     if (phase !== 'AIMING' || questions.length === 0) return;
+
+    // Trava e calcula imediatamente o tempo da pergunta em décimos de segundo antes das animações
+    let questionTenths: number | undefined;
+    if (isTimedRound) {
+      sounds.stopTickTock();
+      const elapsed = questionStartTimeRef.current
+        ? Math.round(((Date.now() - questionStartTimeRef.current) / 1000) * 10) / 10
+        : currentQuestionTenths;
+      questionTenths = elapsed;
+      questionStartTimeRef.current = null;
+      setCurrentQuestionTenths(elapsed);
+      sounds.playCoachWhistle();
+    }
 
     const currentQuestion = questions[currentIndex];
     const isCorrect = corner === currentQuestion.correta;
@@ -122,7 +189,7 @@ export const GamePage: React.FC<GamePageProps> = () => {
       setPhase('RESULT_REVEAL');
 
       // Record answer history
-      const newRecord = {
+      const newRecord: GameAnswerRecord = {
         questionId: currentQuestion.id || `q-${currentIndex}`,
         pergunta: currentQuestion.pergunta,
         userChoice: corner,
@@ -130,6 +197,7 @@ export const GamePage: React.FC<GamePageProps> = () => {
         correctChoice: currentQuestion.correta,
         correctText: currentQuestion.respostas[currentQuestion.correta],
         isCorrect,
+        ...(questionTenths !== undefined ? { responseTimeTenths: questionTenths } : {}),
       };
 
       setRecords((prev) => {
@@ -148,6 +216,9 @@ export const GamePage: React.FC<GamePageProps> = () => {
 
       // Pause briefly then advance to next question or game over
       setTimeout(() => {
+        // Hooks estruturais para mecânicas futuras do mata-mata:
+        // - Dia 18/11/2026 ('VAR_REVIEW'): acionar revisão por texto / VAR antes da próxima etapa.
+        // - Dia 19/11/2026 ('GOLDEN_KICK'): acionar cobrança decisiva de cenário aberto.
         if (currentIndex + 1 < questions.length) {
           setCurrentIndex((prev) => prev + 1);
           setSelectedCorner(null);
@@ -206,7 +277,28 @@ export const GamePage: React.FC<GamePageProps> = () => {
                 playerInfo={playerInfo}
                 onUpdatePlayer={setPlayerInfo}
                 onStartGame={handleStartGame}
+                onEliminated={(info) => {
+                  setEliminatedInfo(info);
+                  setPhase('ELIMINATED');
+                }}
                 totalQuestions={questions.length}
+              />
+            )}
+
+            {phase === 'ELIMINATED' && (
+              <EliminatedScreen
+                playerName={eliminatedInfo?.name || playerInfo.name}
+                playerEmail={eliminatedInfo?.email || playerInfo.email}
+                eliminatedDate={eliminatedInfo?.eliminatedDate}
+                onBackToStart={() => setPhase('START')}
+              />
+            )}
+
+            {phase === 'TIMER_WARNING' && (
+              <TimerWarningModal
+                playerName={playerInfo.name}
+                totalQuestions={questions.length}
+                onConfirmStart={handleConfirmTimedStart}
               />
             )}
 
@@ -222,6 +314,9 @@ export const GamePage: React.FC<GamePageProps> = () => {
                   theme={theme}
                   isMuted={isMuted}
                   onToggleMute={handleToggleMute}
+                  isTimedRound={isTimedRound}
+                  currentQuestionTenths={currentQuestionTenths}
+                  totalTimeTenths={totalTimeTenths}
                 />
 
                 {/* Stadium Pitch, Goalkeeper, Ball and 4 Corners */}
@@ -244,6 +339,7 @@ export const GamePage: React.FC<GamePageProps> = () => {
                 playerInfo={playerInfo}
                 theme={theme}
                 webhookUrl={webhookUrl}
+                isTimedRound={isTimedRound}
               />
             )}
           </>
