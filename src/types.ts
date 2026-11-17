@@ -32,6 +32,9 @@ export interface AttemptRecord {
   tempoResposta?: string; // Tempo total da rodada em décimos de segundo (ex: "18.4s")
   temposPorPergunta?: number[]; // Tempos individuais por pergunta em décimos (ex: [4.2, 3.8, ...])
   answersSummary?: string; // Detalhes dos chutes retornados da planilha oficial
+  varResponse?: string; // Coluna 10: Resposta aberta do VAR (18/11)
+  goldenKickSummary?: string; // Coluna 11: Respostas dos 3 cenários da Final (19/11)
+  isPendingManualReview?: boolean; // True para cobranças da Final avaliadas manualmente pela banca
   source?: 'sheet' | 'local';
 }
 
@@ -39,6 +42,45 @@ export interface TestModeConfig {
   active: boolean;
   simulatedDate: string; // YYYY-MM-DD
   ignoreSchedule: boolean;
+  previewChampion?: boolean;
+}
+
+export interface GoldenKickScenario {
+  id: string;
+  title: string;
+  themesCrossed: string[];
+  context: string;
+  fields: {
+    diagnosticoLabel: string;
+    contencaoLabel: string;
+    acaoPreventivaLabel: string;
+  };
+}
+
+export interface GoldenKickAnswer {
+  scenarioId: string;
+  scenarioTitle: string;
+  diagnostico: string;
+  contencao: string;
+  acaoPreventiva: string;
+  elapsedTenths: number;
+}
+
+export interface ChampionConfig {
+  isReleased: boolean;
+  championName: string;
+  championEmail: string;
+  championTitle: string;
+}
+
+export interface Day17RankingEntry {
+  rank: number;
+  name: string;
+  email: string;
+  score: number;
+  totalQuestions: number;
+  tempoResposta: string;
+  timeSeconds: number;
 }
 
 export interface ParticipantMatrixRow {

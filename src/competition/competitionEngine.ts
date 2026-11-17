@@ -1,4 +1,4 @@
-import { Question, AttemptRecord, ParticipantMatrixRow } from '../types';
+import { Question, AttemptRecord, ParticipantMatrixRow, GoldenKickScenario, ChampionConfig, Day17RankingEntry } from '../types';
 import { OFFICIAL_25_QUESTIONS } from '../defaultQuestions';
 import { storageService } from '../services/storageService';
 
@@ -9,21 +9,20 @@ import { storageService } from '../services/storageService';
  * 2. 5 Dias (16 a 20 de novembro de 2026)
  * 3. 5 Perguntas fixas por dia (sem sorteio)
  * 4. Fuso horário oficial: America/Sao_Paulo
- * 5. 1 tentativa por participante por dia
- * 6. Eliminação diária pelo pior desempenho (Modelo C)
+ * 5. 1 tentativa por participante por dia (08:00 às 18:00)
+ * 6. Eliminação diária + Rodadas Especiais (18/11 VAR e 19/11 Chute de Ouro)
  */
 
 export const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo';
 export const OPERATING_HOURS_START = 8; // 08:00
 export const OPERATING_HOURS_END = 18; // 18:00 (bloqueado antes das 08:00 e a partir das 18:00)
 
-// PARTICIPANTES AUTORIZADOS (INCLUINDO E-MAIL DE TESTES)
+// ÚNICOS 4 PARTICIPANTES OFICIAIS DA COPA DO SGQ 2026 (CONTA DE TESTE REMOVIDA)
 export const AUTHORIZED_PARTICIPANTS: readonly string[] = [
   'consultor12@acim.com.br',
   'escoladenegocios2@acim.com.br',
-  'supervisorcomercial@acim.com.br',
   'escoladenegocios6@acim.com.br',
-  'estagioepp@acim.com.br',
+  'supervisorcomercial@acim.com.br',
 ] as const;
 
 // LISTA TEMPORÁRIA DE E-MAILS ELIMINADOS NO MATA-MATA (PARA BLOQUEIO IMEDIATO ENTRE DISPOSITIVOS)
@@ -32,12 +31,70 @@ export const ELIMINATED_PARTICIPANTS: readonly string[] = [
   // Exemplo: 'colaborador@acim.com.br',
 ] as const;
 
-// DATA EXCLUSIVA DA RODADA CRONOMETRADA DE DESEMPATE (DIA 17)
+// CONFIGURAÇÃO DO GRANDE CAMPEÃO FINAL (MANTIDA COMO isReleased: false ATÉ A REVELAÇÃO PRESENCIAL)
+export const CHAMPION_CONFIG: ChampionConfig = {
+  isReleased: false,
+  championName: 'Grande Campeão ACIM 2026',
+  championEmail: '',
+  championTitle: 'GRANDE CAMPEÃO DA COPA DO SGQ ACIM 2026',
+};
+
+// DATAS ESPECIAIS DO MATA-MATA
 export const TIMED_KNOCKOUT_DATE = '2026-11-17';
+export const VAR_REVIEW_DATE = '2026-11-18';
+export const GOLDEN_KICK_DATE = '2026-11-19';
 
 export function isTimedKnockoutDay(dateStr: string): boolean {
   return dateStr === TIMED_KNOCKOUT_DATE;
 }
+
+export function isVarReviewDay(dateStr: string): boolean {
+  return dateStr === VAR_REVIEW_DATE;
+}
+
+export function isGoldenKickDay(dateStr: string): boolean {
+  return dateStr === GOLDEN_KICK_DATE;
+}
+
+// 3 CENÁRIOS PRÁTICOS DA GRANDE FINAL (19/11 — CHUTE DE OURO / CENÁRIO CEGO)
+export const GOLDEN_KICK_SCENARIOS: GoldenKickScenario[] = [
+  {
+    id: 'FINAL-01',
+    title: 'Cenário 1 — Desorganização, Dados Perdidos & Ocorrência no SIG Sistem',
+    themesCrossed: ['5S & Gestão da Informação', 'Não Conformidades', 'Atendimento', 'SIG Sistem'],
+    context:
+      'Durante o atendimento a um associado, um colaborador percebe que documentos importantes ficaram espalhados na mesa sem arquivamento padrão, uma versão desatualizada de formulário foi utilizada e uma reclamação anterior do mesmo associado não havia sido registrada nem tratada no SIG Sistem.',
+    fields: {
+      diagnosticoLabel: '1. Diagnóstico e temas do SGQ violados',
+      contencaoLabel: '2. Contenção imediata no SIG Sistem / ACIM',
+      acaoPreventivaLabel: '3. Ação preventiva e melhoria sistêmica',
+    },
+  },
+  {
+    id: 'FINAL-02',
+    title: 'Cenário 2 — Meta Abaixo do Esperado, Dependência de Pessoa & Propósito',
+    themesCrossed: ['Objetivos e Indicadores', 'Gestão de Riscos', 'Missão, Visão, Valores & Política', 'SIG Sistem'],
+    context:
+      'Um indicador estratégico do setor fechou 3 meses seguidos abaixo da meta. Ao investigar, a equipe descobriu que apenas uma pessoa sabia gerar os dados no SIG Sistem, saiu de férias sem deixar manual atualizado, e ninguém havia registrado esse risco ou revisado os compromissos da Política da Qualidade.',
+    fields: {
+      diagnosticoLabel: '1. Diagnóstico e temas do SGQ violados',
+      contencaoLabel: '2. Contenção imediata no SIG Sistem / ACIM',
+      acaoPreventivaLabel: '3. Ação preventiva e melhoria sistêmica',
+    },
+  },
+  {
+    id: 'FINAL-03',
+    title: 'Cenário 3 — Mudança Sem Aviso Entre Setores & Dados Pessoais (LGPD)',
+    themesCrossed: ['Visão Sistêmica & Melhoria Contínua', 'Atendimento', 'LGPD', 'SIG Sistem'],
+    context:
+      'Um setor alterou o fluxo de encaminhamento de fichas cadastrais de associados no SIG Sistem sem avisar o departamento vizinho e passou a compartilhar uma planilha com CPF, telefone e e-mail em grupo aberto de mensagens para agilizar os retornos.',
+    fields: {
+      diagnosticoLabel: '1. Diagnóstico e temas do SGQ violados',
+      contencaoLabel: '2. Contenção imediata no SIG Sistem / ACIM',
+      acaoPreventivaLabel: '3. Ação preventiva e melhoria sistêmica',
+    },
+  },
+];
 
 export function isEliminatedParticipant(email: string | undefined | null): boolean {
   if (!email) return false;
@@ -367,4 +424,49 @@ export function canParticipantPlayToday(
   }
 
   return { allowed: true };
+}
+
+/**
+ * Gera o ranking de tempo de resposta da rodada de 17/11/2026 filtrando exclusivamente
+ * os 4 participantes oficiais (ordenado por maior pontuação e menor tempo em décimos de segundo).
+ */
+export function buildDay17SpeedRanking(attempts: AttemptRecord[]): Day17RankingEntry[] {
+  const day17Attempts = attempts.filter(
+    (att) => att.date === TIMED_KNOCKOUT_DATE && isAuthorizedParticipant(att.email)
+  );
+
+  // Garante unicidade por e-mail oficial
+  const byEmail = new Map<string, AttemptRecord>();
+  day17Attempts.forEach((att) => {
+    const clean = att.email.trim().toLowerCase();
+    if (!byEmail.has(clean)) {
+      byEmail.set(clean, att);
+    }
+  });
+
+  const entries = Array.from(byEmail.values()).map((att) => {
+    const rawTime = (att.tempoResposta || '').replace(',', '.').replace(/[^\d.]/g, '');
+    const parsedTime = rawTime ? parseFloat(rawTime) : Number.POSITIVE_INFINITY;
+    const hasValidTime = !Number.isNaN(parsedTime) && Number.isFinite(parsedTime) && parsedTime > 0;
+
+    return {
+      rank: 0,
+      name: att.name || att.email.split('@')[0],
+      email: att.email.toLowerCase(),
+      score: Number(att.score || 0),
+      totalQuestions: Number(att.totalQuestions || 5) || 5,
+      tempoResposta: hasValidTime ? `${parsedTime.toFixed(1)}s` : '—',
+      timeSeconds: hasValidTime ? parsedTime : 999999,
+    };
+  });
+
+  entries.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.timeSeconds - b.timeSeconds;
+  });
+
+  return entries.map((entry, idx) => ({
+    ...entry,
+    rank: idx + 1,
+  }));
 }

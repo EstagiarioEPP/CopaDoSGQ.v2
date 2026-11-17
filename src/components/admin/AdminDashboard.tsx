@@ -29,6 +29,8 @@ import {
   Clock,
   AlertCircle,
   CheckCircle2,
+  Eye,
+  Tv,
 } from 'lucide-react';
 import {
   calculateCompetitionMatrix,
@@ -37,6 +39,9 @@ import {
   getSaoPauloDateString,
   getSaoPauloTimeInfo,
   isTimedKnockoutDay,
+  isVarReviewDay,
+  isGoldenKickDay,
+  CHAMPION_CONFIG,
 } from '../../competition/competitionEngine';
 
 const DAY_TOPIC_TITLES: Record<number, string> = {
@@ -84,6 +89,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [testWebhookStatus, setTestWebhookStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testWebhookMessage, setTestWebhookMessage] = useState('');
   const [copiedCodeType, setCopiedCodeType] = useState<string | null>(null);
+  const [selectedOpenResponseAttempt, setSelectedOpenResponseAttempt] = useState<AttemptRecord | null>(null);
 
   const handleSyncSheets = useCallback(async () => {
     setSyncStatus('loading');
@@ -353,8 +359,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
  * =========================================================================
  * GOOGLE APPS SCRIPT — COPA DO SGQ ACIM (NOVEMBRO 2026)
  * =========================================================================
- * Inclui: gravação segura (doPost), trava de horário (08h-18h),
- * coluna Tempo de Resposta e leitura do histórico para o Painel (doGet).
+ * Funcionalidades:
+ * 1. Restrição estrita aos 4 participantes oficiais (conta de teste removida).
+ * 2. Validação oficial de pontuação no servidor (gabarito seguro para rodadas de múltipla escolha).
+ * 3. Bloqueio de horário oficial (08:00 às 18:00 - America/Sao_Paulo).
+ * 4. Bloqueio rigoroso de duplicidade por [e-mail + data normalizada].
+ * 5. Preservação total de colunas 1-9 e adição das Colunas 10 (VAR 18/11) e 11 (Final Chute de Ouro 19/11).
+ * 6. Leitura completa via doGet(e) para o Painel Administrativo e Ranking 17/11.
  */
 var SPREADSHEET_ID = "${OFFICIAL_SPREADSHEET_ID}";
 
@@ -371,12 +382,12 @@ var GABARITO_OFICIAL = {
   "Q21": "C", "Q22": "A", "Q23": "B", "Q24": "C", "Q25": "C"
 };
 
+// ÚNICOS 4 PARTICIPANTES OFICIAIS (CONTA DE TESTE REMOVIDA)
 var PARTICIPANTES_AUTORIZADOS = [
   "consultor12@acim.com.br",
   "escoladenegocios2@acim.com.br",
-  "supervisorcomercial@acim.com.br",
   "escoladenegocios6@acim.com.br",
-  "estagioepp@acim.com.br"
+  "supervisorcomercial@acim.com.br"
 ];
 
 function getTargetSheet() {
@@ -402,17 +413,43 @@ function normalizeSheetTimestamp(val) {
   return val.toString().trim();
 }
 
+function ensureHeaders(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "Data e Hora",
+      "Nome",
+      "E-mail",
+      "Data da Rodada",
+      "Gols (Acertos)",
+      "Total",
+      "Aproveitamento",
+      "Detalhes dos Chutes",
+      "Tempo de Resposta",
+      "VAR - Exemplo Prático",
+      "Final - Chute de Ouro"
+    ]);
+    sheet.getRange(1, 1, 1, 11).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
+    return;
+  }
+  var extraHeaders = [
+    { col: 9, title: "Tempo de Resposta" },
+    { col: 10, title: "VAR - Exemplo Prático" },
+    { col: 11, title: "Final - Chute de Ouro" }
+  ];
+  for (var h = 0; h < extraHeaders.length; h++) {
+    var cell = sheet.getRange(1, extraHeaders[h].col);
+    if (!cell.getValue()) {
+      cell.setValue(extraHeaders[h].title).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
+    }
+  }
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(15000);
     var sheet = getTargetSheet();
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(["Data e Hora", "Nome", "E-mail", "Data da Rodada", "Gols (Acertos)", "Total", "Aproveitamento", "Detalhes dos Chutes", "Tempo de Resposta"]);
-      sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
-    } else if (!sheet.getRange(1, 9).getValue()) {
-      sheet.getRange(1, 9).setValue("Tempo de Resposta").setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
-    }
+    ensureHeaders(sheet);
 
     var data = {};
     if (e && e.postData && e.postData.contents) {
@@ -432,7 +469,6 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ success: false, error: "E-mail não autorizado." })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Validação de horário oficial (08:00 às 18:00 Brasília, com tolerância para conclusões iniciadas antes das 18:00)
     var now = new Date();
     var spHour = Number(Utilities.formatDate(now, "America/Sao_Paulo", "H"));
     var spMinute = Number(Utilities.formatDate(now, "America/Sao_Paulo", "m"));
@@ -441,7 +477,6 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Fora do horário oficial (08:00 às 18:00)." })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Bloqueio de duplicidade por e-mail + data
     var numRows = sheet.getLastRow();
     if (numRows > 1 && !isAdminTest) {
       var rangeValues = sheet.getRange(2, 1, numRows - 1, Math.max(sheet.getLastColumn(), 4)).getValues();
@@ -454,14 +489,45 @@ function doPost(e) {
       }
     }
 
-    var totalQuestions = Number(data.totalQuestions || data.total || 5);
-    var officialScore = Number(data.score !== undefined ? data.score : (data.gols || 0));
-    var percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
+    var isGoldenKick = Boolean(data.isGoldenKick) || rodadaData === "2026-11-19";
+    var totalQuestions = 5;
+    var officialScore = 0;
+    var percentage = "0%";
+    var answersSummary = data.answers || "";
+
+    if (isGoldenKick) {
+      officialScore = "Em análise";
+      totalQuestions = Number(data.totalQuestions || 3);
+      percentage = "Banca SGQ";
+      answersSummary = data.answers || "Grande Final — 3 Cenários (Avaliação Manual)";
+    } else if (Array.isArray(data.records) && data.records.length > 0) {
+      officialScore = 0;
+      totalQuestions = data.records.length;
+      var detailList = [];
+      for (var q = 0; q < data.records.length; q++) {
+        var rec = data.records[q];
+        var qId = (rec.questionId || "").toString().toUpperCase();
+        var choice = (rec.userChoice || "").toString().toUpperCase();
+        var correctChoice = GABARITO_OFICIAL[qId];
+        var isHit = correctChoice && (choice === correctChoice);
+        if (isHit) officialScore++;
+        detailList.push(qId + ": [" + choice + "] " + (isHit ? "Gol" : "Defesa"));
+      }
+      answersSummary = detailList.join(" | ");
+      percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
+    } else if (data.score !== undefined && data.score !== null) {
+      officialScore = Number(data.score);
+      totalQuestions = Number(data.totalQuestions || 5);
+      percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
+    }
+
     var timestampStr = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
     var tempoResposta = (data.tempoResposta !== undefined && data.tempoResposta !== null && data.tempoResposta !== "") ? data.tempoResposta.toString() : "-";
+    var varResponse = (data.varResponse !== undefined && data.varResponse !== null && data.varResponse !== "") ? data.varResponse.toString() : "-";
+    var goldenKickSummary = (data.goldenKickSummary !== undefined && data.goldenKickSummary !== null && data.goldenKickSummary !== "") ? data.goldenKickSummary.toString() : "-";
 
-    sheet.appendRow([timestampStr, nome, email, rodadaData, officialScore, totalQuestions, percentage, data.answers || "-", tempoResposta]);
-    return ContentService.createTextOutput(JSON.stringify({ success: true, score: officialScore, percentage: percentage, tempoResposta: tempoResposta })).setMimeType(ContentService.MimeType.JSON);
+    sheet.appendRow([timestampStr, nome, email, rodadaData, officialScore, totalQuestions, percentage, answersSummary, tempoResposta, varResponse, goldenKickSummary]);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, score: officialScore, total: totalQuestions, percentage: percentage, tempoResposta: tempoResposta })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
   } finally {
@@ -473,7 +539,7 @@ function doGet(e) {
   try {
     var sheet = getTargetSheet();
     var numRows = sheet.getLastRow();
-    var numCols = Math.max(sheet.getLastColumn(), 9);
+    var numCols = Math.max(sheet.getLastColumn(), 11);
     var attempts = [];
     if (numRows > 1) {
       var values = sheet.getRange(2, 1, numRows - 1, numCols).getValues();
@@ -481,22 +547,29 @@ function doGet(e) {
         var row = values[i];
         var rowEmail = (row[2] || "").toString().trim().toLowerCase();
         if (!rowEmail || rowEmail.indexOf("@") === -1) continue;
+        var rowDate = normalizeSheetDate(row[3]);
+        var rawScore = row[4];
+        var isPending = rowDate === "2026-11-19" || (rawScore && rawScore.toString().toLowerCase().indexOf("análise") !== -1);
         attempts.push({
           timestamp: normalizeSheetTimestamp(row[0]),
           name: (row[1] || "Jogador").toString().trim(),
           email: rowEmail,
-          date: normalizeSheetDate(row[3]),
-          score: Number(row[4] || 0),
+          date: rowDate,
+          score: isPending ? 0 : Number(rawScore || 0),
           totalQuestions: Number(row[5] || 5) || 5,
           percentage: (row[6] || "").toString().trim(),
           answers: (row[7] || "").toString().trim(),
-          tempoResposta: (row[8] !== undefined && row[8] !== null) ? row[8].toString().trim() : "-"
+          tempoResposta: (row[8] !== undefined && row[8] !== null) ? row[8].toString().trim() : "-",
+          varResponse: (row[9] !== undefined && row[9] !== null) ? row[9].toString().trim() : "-",
+          goldenKickSummary: (row[10] !== undefined && row[10] !== null) ? row[10].toString().trim() : "-",
+          isPendingManualReview: isPending
         });
       }
     }
     return ContentService.createTextOutput(JSON.stringify({
       status: "online",
       competicao: "Copa do SGQ ACIM 2026",
+      participantes: PARTICIPANTES_AUTORIZADOS.length,
       totalRegistros: attempts.length,
       attempts: attempts
     })).setMimeType(ContentService.MimeType.JSON);
@@ -536,6 +609,24 @@ function doGet(e) {
             >
               <FlaskConical className="w-4 h-4" />
               <span>Testar Jogo</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                sounds.playWhistle();
+                onStartTestGame({
+                  active: true,
+                  simulatedDate: '2026-11-20',
+                  ignoreSchedule: true,
+                  previewChampion: true,
+                });
+              }}
+              className="px-3.5 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-amber-300 border border-amber-400/50 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow whitespace-nowrap shrink-0"
+              title={`Prévia da celebração oficial (${CHAMPION_CONFIG.isReleased ? 'Liberada' : 'Oculta para jogadores até liberação'})`}
+            >
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <span>Apresentar Campeão</span>
             </button>
 
             <button
@@ -999,8 +1090,11 @@ function doGet(e) {
           const matrix = calculateCompetitionMatrix(attempts);
           const distinctEmailsWithAttempts = new Set(attempts.map((a) => a.email.toLowerCase())).size;
           const activeParticipantsCount = matrix.filter((m) => m.status !== 'Eliminado').length;
-          const totalPossibleScore = attempts.length * 5;
-          const totalActualScore = attempts.reduce((acc, a) => acc + (a.score || 0), 0);
+          const scoredAttempts = attempts.filter(
+            (a) => !a.isPendingManualReview && a.date !== '2026-11-19'
+          );
+          const totalPossibleScore = scoredAttempts.length * 5;
+          const totalActualScore = scoredAttempts.reduce((acc, a) => acc + (a.score || 0), 0);
           const avgPercentage = totalPossibleScore > 0 ? Math.round((totalActualScore / totalPossibleScore) * 100) : 0;
 
           return (
@@ -1195,7 +1289,19 @@ function doGet(e) {
 
                               {/* 19/11 */}
                               <td className="px-3 py-3 text-center">
-                                {row.dias['2026-11-19'] !== null ? `${row.dias['2026-11-19']}/5` : '—'}
+                                {(() => {
+                                  const finalAttempt = attempts.find(
+                                    (a) => a.email.toLowerCase() === row.email.toLowerCase() && a.date === '2026-11-19'
+                                  );
+                                  if (finalAttempt && (finalAttempt.isPendingManualReview || finalAttempt.goldenKickSummary)) {
+                                    return (
+                                      <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/40 text-amber-300 text-[10px]">
+                                        Em análise
+                                      </span>
+                                    );
+                                  }
+                                  return row.dias['2026-11-19'] !== null ? `${row.dias['2026-11-19']}/5` : '—';
+                                })()}
                               </td>
 
                               {/* 20/11 */}
@@ -1262,14 +1368,22 @@ function doGet(e) {
                             <th className="px-4 py-3 text-center">Acertos (Gols)</th>
                             <th className="px-4 py-3 text-center">Aproveitamento</th>
                             <th className="px-4 py-3 text-center">Tempo</th>
+                            <th className="px-4 py-3 text-center">VAR / Final</th>
                             <th className="px-4 py-3 text-right">Data e Horário do Registro</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/60">
                           {attempts.map((attempt, idx) => {
-                            const total = attempt.totalQuestions || 5;
+                            const isManualPending =
+                              Boolean(attempt.isPendingManualReview) || attempt.date === '2026-11-19';
+                            const total = attempt.totalQuestions || (isManualPending ? 3 : 5);
                             const isHigh = attempt.score >= Math.ceil(total * 0.7);
                             const perc = Math.round((attempt.score / total) * 100);
+                            const hasVar = Boolean(attempt.varResponse && attempt.varResponse !== '-');
+                            const hasFinal = Boolean(
+                              attempt.goldenKickSummary && attempt.goldenKickSummary !== '-'
+                            );
+
                             return (
                               <tr key={`${attempt.email}-${attempt.date}-${idx}`} className="hover:bg-slate-900/40 transition-colors">
                                 <td className="px-4 py-3 text-slate-500 font-mono tabular-nums">{idx + 1}</td>
@@ -1290,21 +1404,44 @@ function doGet(e) {
                                     : attempt.date || '—'}
                                 </td>
                                 <td className="px-4 py-3 text-center">
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold font-mono tabular-nums text-xs border ${
-                                      isHigh
-                                        ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
-                                        : 'bg-amber-950/80 text-amber-400 border-amber-500/40'
-                                    }`}
-                                  >
-                                    ⚽ {attempt.score}/{total}
-                                  </span>
+                                  {isManualPending ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold font-mono text-xs border bg-amber-950/70 text-amber-300 border-amber-500/40 whitespace-nowrap">
+                                      Em análise
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold font-mono tabular-nums text-xs border ${
+                                        isHigh
+                                          ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
+                                          : 'bg-amber-950/80 text-amber-400 border-amber-500/40'
+                                      }`}
+                                    >
+                                      ⚽ {attempt.score}/{total}
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="px-4 py-3 text-center font-mono tabular-nums text-xs text-slate-300">
-                                  {perc}%
+                                  {isManualPending ? 'Banca SGQ' : `${perc}%`}
                                 </td>
                                 <td className="px-4 py-3 text-center font-mono tabular-nums text-xs text-amber-300">
                                   {attempt.tempoResposta || '—'}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  {hasVar || hasFinal ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        sounds.playBlip();
+                                        setSelectedOpenResponseAttempt(attempt);
+                                      }}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                      <span>{hasFinal ? 'Ver Final' : 'Ver VAR'}</span>
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-600 font-mono">—</span>
+                                  )}
                                 </td>
                                 <td className="px-4 py-3 text-right text-slate-400 font-mono tabular-nums text-[11px]">
                                   <div>{attempt.timestamp}</div>
@@ -1325,6 +1462,77 @@ function doGet(e) {
           );
         })()}
       </main>
+
+      {/* Modal: Visualização Completa de Respostas Abertas (VAR 18/11 & Chute de Ouro 19/11) */}
+      {selectedOpenResponseAttempt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="w-full max-w-2xl bg-slate-900 border-2 border-cyan-400/60 rounded-2xl p-6 text-slate-100 space-y-4 shadow-2xl max-h-[88vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-cyan-300 font-bold text-sm">
+                  <Tv className="w-4 h-4 shrink-0" />
+                  <span>Respostas Abertas para Avaliação da Banca SGQ</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1 font-mono">
+                  {selectedOpenResponseAttempt.name} ({selectedOpenResponseAttempt.email}) · Rodada{' '}
+                  {selectedOpenResponseAttempt.date}
+                  {selectedOpenResponseAttempt.tempoResposta
+                    ? ` · Tempo: ${selectedOpenResponseAttempt.tempoResposta}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedOpenResponseAttempt(null)}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {selectedOpenResponseAttempt.varResponse &&
+              selectedOpenResponseAttempt.varResponse !== '-' && (
+                <div className="p-4 bg-cyan-950/30 border border-cyan-500/40 rounded-xl space-y-1.5">
+                  <span className="text-[11px] font-bold font-mono uppercase text-cyan-300 block">
+                    Coluna 10 · Exemplo Prático no VAR (18/11)
+                  </span>
+                  <p className="text-xs sm:text-sm text-slate-100 leading-relaxed whitespace-pre-wrap">
+                    {selectedOpenResponseAttempt.varResponse}
+                  </p>
+                </div>
+              )}
+
+            {selectedOpenResponseAttempt.goldenKickSummary &&
+              selectedOpenResponseAttempt.goldenKickSummary !== '-' && (
+                <div className="p-4 bg-amber-950/25 border border-amber-500/40 rounded-xl space-y-2.5">
+                  <span className="text-[11px] font-bold font-mono uppercase text-amber-300 block">
+                    Coluna 11 · Grande Final — Chute de Ouro (19/11)
+                  </span>
+                  <div className="space-y-2">
+                    {selectedOpenResponseAttempt.goldenKickSummary.split(' || ').map((block, bIdx) => (
+                      <div
+                        key={bIdx}
+                        className="p-3 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 leading-relaxed whitespace-pre-wrap"
+                      >
+                        {block}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setSelectedOpenResponseAttempt(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl text-slate-200 cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Configurar Testar Jogo (Qualquer data e fora de horário) */}
       {showTestModal && (
@@ -1358,6 +1566,8 @@ function doGet(e) {
                 {COMPETITION_DAYS.map((day) => {
                   const selected = testDate === day.date;
                   const timed = isTimedKnockoutDay(day.date);
+                  const varDay = isVarReviewDay(day.date);
+                  const goldenDay = isGoldenKickDay(day.date);
                   return (
                     <button
                       key={day.date}
@@ -1376,13 +1586,16 @@ function doGet(e) {
                         <span className="font-bold text-xs">
                           Dia {day.label}/2026 (Rodada {day.dayIndex})
                         </span>
-                        {timed && (
-                          <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        )}
+                        {timed && <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                        {varDay && <Tv className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
+                        {goldenDay && <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />}
                       </div>
                       <div className="text-[11px] text-slate-400 font-mono mt-1">
-                        {day.questionIds[0]} a {day.questionIds[day.questionIds.length - 1]}
-                        {timed ? ' · Com Cronômetro' : ''}
+                        {goldenDay
+                          ? '3 Cenários · Chute de Ouro'
+                          : `${day.questionIds[0]} a ${day.questionIds[day.questionIds.length - 1]}${
+                              timed ? ' · Cronômetro' : varDay ? ' · Com VAR' : ''
+                            }`}
                       </div>
                     </button>
                   );

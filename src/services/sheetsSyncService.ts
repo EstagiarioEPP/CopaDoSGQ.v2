@@ -119,20 +119,29 @@ async function fetchViaGvizFallback(): Promise<AttemptRecord[] | null> {
       if (!email || !email.includes('@')) continue;
 
       const date = normalizeSheetDate(cells[3]?.f || cells[3]?.v);
-      const score = Number(cells[4]?.v ?? 0);
+      const rawScore = cells[4]?.v;
+      const isManual =
+        date === '2026-11-19' ||
+        String(rawScore || '').toLowerCase().includes('análise');
+      const numericScore = Number(rawScore ?? 0);
       const totalQuestions = Number(cells[5]?.v ?? 5) || 5;
       const answersSummary = cells[7]?.v ? String(cells[7].v) : undefined;
       const tempoVal = cells[8]?.v ? String(cells[8].v).trim() : undefined;
+      const varVal = cells[9]?.v ? String(cells[9].v).trim() : undefined;
+      const goldenVal = cells[10]?.v ? String(cells[10].v).trim() : undefined;
 
       parsed.push({
         timestamp: normalizeTimestamp(cells[0]?.v, cells[0]?.f),
         name: String(cells[1]?.v || email.split('@')[0]).trim(),
         email,
         date,
-        score: Number.isNaN(score) ? 0 : score,
+        score: isManual || Number.isNaN(numericScore) ? 0 : numericScore,
         totalQuestions,
         answersSummary,
         tempoResposta: tempoVal && tempoVal !== '-' ? tempoVal : undefined,
+        varResponse: varVal && varVal !== '-' ? varVal : undefined,
+        goldenKickSummary: goldenVal && goldenVal !== '-' ? goldenVal : undefined,
+        isPendingManualReview: isManual,
         source: 'sheet',
       });
     }
@@ -186,15 +195,27 @@ export const sheetsSyncService = {
           .filter((item: any) => item && item.email)
           .map((item: any) => {
             const tempoStr = item.tempoResposta ? String(item.tempoResposta).trim() : '';
+            const varStr = item.varResponse ? String(item.varResponse).trim() : '';
+            const goldenStr = item.goldenKickSummary ? String(item.goldenKickSummary).trim() : '';
+            const normalizedDate = normalizeSheetDate(item.date);
+            const isManual =
+              Boolean(item.isPendingManualReview) ||
+              normalizedDate === '2026-11-19' ||
+              String(item.score ?? '').toLowerCase().includes('análise');
+            const numericScore = Number(item.score ?? 0);
+
             return {
               timestamp: String(item.timestamp || '—'),
               name: String(item.name || item.nome || 'Jogador').trim(),
               email: String(item.email).trim().toLowerCase(),
-              date: normalizeSheetDate(item.date),
-              score: Number(item.score ?? 0) || 0,
+              date: normalizedDate,
+              score: isManual || Number.isNaN(numericScore) ? 0 : numericScore,
               totalQuestions: Number(item.totalQuestions ?? 5) || 5,
               answersSummary: item.answers ? String(item.answers) : undefined,
               tempoResposta: tempoStr && tempoStr !== '-' ? tempoStr : undefined,
+              varResponse: varStr && varStr !== '-' ? varStr : undefined,
+              goldenKickSummary: goldenStr && goldenStr !== '-' ? goldenStr : undefined,
+              isPendingManualReview: isManual,
               source: 'sheet' as const,
             };
           });

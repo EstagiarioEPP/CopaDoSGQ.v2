@@ -7,13 +7,12 @@
  * https://docs.google.com/spreadsheets/d/1gZ6lMxCUw3GUGgHkhsifDZ_IwGolb9tXOFty3l4OTZA/edit?gid=0#gid=0
  *
  * Funcionalidades:
- * 1. Restrição aos participantes autorizados.
- * 2. Validação oficial de pontuação no servidor (gabarito seguro).
+ * 1. Restrição estrita aos 4 participantes oficiais (conta de teste removida).
+ * 2. Validação oficial de pontuação no servidor (gabarito seguro para rodadas de múltipla escolha).
  * 3. Bloqueio de horário oficial (08:00 às 18:00 - America/Sao_Paulo).
  * 4. Bloqueio rigoroso de duplicidade por [e-mail + data normalizada].
- * 5. Controle de concorrência com LockService.
- * 6. Preservação total de linhas e registros antigos da planilha.
- * 7. Leitura do histórico completo via doGet(e) para o Painel de Gestão.
+ * 5. Preservação total de colunas 1-9 e adição das Colunas 10 (VAR 18/11) e 11 (Final Chute de Ouro 19/11).
+ * 6. Leitura completa via doGet(e) para o Painel Administrativo e Ranking 17/11.
  */
 
 var SPREADSHEET_ID = "1gZ6lMxCUw3GUGgHkhsifDZ_IwGolb9tXOFty3l4OTZA";
@@ -52,13 +51,12 @@ var GABARITO_OFICIAL = {
   "Q25": "C"
 };
 
-// PARTICIPANTES AUTORIZADOS (INCLUINDO E-MAIL DE TESTES)
+// ÚNICOS 4 PARTICIPANTES OFICIAIS (CONTA DE TESTE REMOVIDA)
 var PARTICIPANTES_AUTORIZADOS = [
   "consultor12@acim.com.br",
   "escoladenegocios2@acim.com.br",
-  "supervisorcomercial@acim.com.br",
   "escoladenegocios6@acim.com.br",
-  "estagioepp@acim.com.br"
+  "supervisorcomercial@acim.com.br"
 ];
 
 function getTargetSheet() {
@@ -90,6 +88,45 @@ function normalizeSheetTimestamp(val) {
   return val.toString().trim();
 }
 
+function ensureHeaders(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "Data e Hora",
+      "Nome",
+      "E-mail",
+      "Data da Rodada",
+      "Gols (Acertos)",
+      "Total",
+      "Aproveitamento",
+      "Detalhes dos Chutes",
+      "Tempo de Resposta",
+      "VAR - Exemplo Prático",
+      "Final - Chute de Ouro"
+    ]);
+    sheet.getRange(1, 1, 1, 11)
+      .setFontWeight("bold")
+      .setBackground("#065f46")
+      .setFontColor("#ffffff");
+    return;
+  }
+
+  // Adiciona apenas cabeçalhos faltantes nas colunas 9, 10 e 11 sem tocar nos dados existentes
+  var extraHeaders = [
+    { col: 9, title: "Tempo de Resposta" },
+    { col: 10, title: "VAR - Exemplo Prático" },
+    { col: 11, title: "Final - Chute de Ouro" }
+  ];
+  for (var h = 0; h < extraHeaders.length; h++) {
+    var cell = sheet.getRange(1, extraHeaders[h].col);
+    if (!cell.getValue()) {
+      cell.setValue(extraHeaders[h].title)
+        .setFontWeight("bold")
+        .setBackground("#065f46")
+        .setFontColor("#ffffff");
+    }
+  }
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
@@ -97,31 +134,7 @@ function doPost(e) {
     lock.waitLock(15000);
 
     var sheet = getTargetSheet();
-
-    // Cria cabeçalho retrocompatível se a planilha for nova, ou adiciona a 9ª coluna sem afetar colunas 1-8 existentes
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow([
-        "Data e Hora",
-        "Nome",
-        "E-mail",
-        "Data da Rodada",
-        "Gols (Acertos)",
-        "Total",
-        "Aproveitamento",
-        "Detalhes dos Chutes",
-        "Tempo de Resposta"
-      ]);
-      sheet.getRange(1, 1, 1, 9)
-        .setFontWeight("bold")
-        .setBackground("#065f46")
-        .setFontColor("#ffffff");
-    } else if (!sheet.getRange(1, 9).getValue()) {
-      sheet.getRange(1, 9)
-        .setValue("Tempo de Resposta")
-        .setFontWeight("bold")
-        .setBackground("#065f46")
-        .setFontColor("#ffffff");
-    }
+    ensureHeaders(sheet);
 
     var data = {};
     if (e && e.postData && e.postData.contents) {
@@ -143,7 +156,7 @@ function doPost(e) {
       rodadaData = Utilities.formatDate(new Date(), "America/Sao_Paulo", "yyyy-MM-dd");
     }
 
-    // 1. Verificação se o e-mail está na lista de participantes autorizados (ou teste admin)
+    // 1. Verificação se o e-mail está na lista dos 4 participantes oficiais (ou teste admin)
     var isAuthorized = PARTICIPANTES_AUTORIZADOS.some(function(p) {
       return p.toLowerCase() === email;
     });
@@ -170,7 +183,6 @@ function doPost(e) {
     }
 
     // 2. BLOQUEIO DE DUPLICIDADE: e-mail + data da rodada
-    // Percorre as linhas existentes na planilha (coluna 3 = E-mail, coluna 4 = Data da Rodada)
     var numRows = sheet.getLastRow();
     if (numRows > 1 && !isAdminTest) {
       var rangeValues = sheet.getRange(2, 1, numRows - 1, Math.max(sheet.getLastColumn(), 4)).getValues();
@@ -178,7 +190,6 @@ function doPost(e) {
         var rowEmail = (rangeValues[i][2] || "").toString().trim().toLowerCase();
         var rowDate = normalizeSheetDate(rangeValues[i][3]);
 
-        // Se encontrar mesmo e-mail e mesma data, rejeita para evitar duplicidade
         if (rowEmail === email && rowDate === rodadaData) {
           return ContentService.createTextOutput(JSON.stringify({
             success: false,
@@ -188,14 +199,19 @@ function doPost(e) {
       }
     }
 
-    // 3. CÁLCULO SEGURO DA PONTUAÇÃO NO SERVIDOR
+    // 3. TRATAMENTO DA GRANDE FINAL (19/11) VS RODADAS DE MÚLTIPLA ESCOLHA
+    var isGoldenKick = Boolean(data.isGoldenKick) || rodadaData === "2026-11-19";
     var totalQuestions = 5;
     var officialScore = 0;
+    var percentage = "0%";
     var answersSummary = data.answers || "";
 
-    // Se o cliente enviou as escolhas (ex: array de chutes { questionId, userChoice }),
-    // valida oficialmente contra o GABARITO_OFICIAL do servidor
-    if (Array.isArray(data.records) && data.records.length > 0) {
+    if (isGoldenKick) {
+      officialScore = "Em análise";
+      totalQuestions = Number(data.totalQuestions || 3);
+      percentage = "Banca SGQ";
+      answersSummary = data.answers || "Grande Final — 3 Cenários (Avaliação Manual)";
+    } else if (Array.isArray(data.records) && data.records.length > 0) {
       officialScore = 0;
       totalQuestions = data.records.length;
       var detailList = [];
@@ -213,19 +229,25 @@ function doPost(e) {
         detailList.push(qId + ": [" + choice + "] " + (isHit ? "Gol" : "Defesa"));
       }
       answersSummary = detailList.join(" | ");
+      percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
     } else if (data.score !== undefined && data.score !== null) {
-      // Fallback compatível
       officialScore = Number(data.score);
       totalQuestions = Number(data.totalQuestions || 5);
+      percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
     }
 
-    var percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
     var timestampStr = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
     var tempoResposta = (data.tempoResposta !== undefined && data.tempoResposta !== null && data.tempoResposta !== "")
       ? data.tempoResposta.toString()
       : "-";
+    var varResponse = (data.varResponse !== undefined && data.varResponse !== null && data.varResponse !== "")
+      ? data.varResponse.toString()
+      : "-";
+    var goldenKickSummary = (data.goldenKickSummary !== undefined && data.goldenKickSummary !== null && data.goldenKickSummary !== "")
+      ? data.goldenKickSummary.toString()
+      : "-";
 
-    // 4. Grava a linha de resultado oficial na planilha (9ª coluna = Tempo de Resposta)
+    // 4. Grava a linha de resultado oficial na planilha (11 colunas sem deslocar colunas 1-9)
     sheet.appendRow([
       timestampStr,
       nome,
@@ -235,7 +257,9 @@ function doPost(e) {
       totalQuestions,
       percentage,
       answersSummary,
-      tempoResposta
+      tempoResposta,
+      varResponse,
+      goldenKickSummary
     ]);
 
     return ContentService.createTextOutput(JSON.stringify({
@@ -261,7 +285,7 @@ function doGet(e) {
   try {
     var sheet = getTargetSheet();
     var numRows = sheet.getLastRow();
-    var numCols = Math.max(sheet.getLastColumn(), 9);
+    var numCols = Math.max(sheet.getLastColumn(), 11);
     var attempts = [];
 
     if (numRows > 1) {
@@ -271,16 +295,23 @@ function doGet(e) {
         var rowEmail = (row[2] || "").toString().trim().toLowerCase();
         if (!rowEmail || rowEmail.indexOf("@") === -1) continue;
 
+        var rowDate = normalizeSheetDate(row[3]);
+        var rawScore = row[4];
+        var isPending = rowDate === "2026-11-19" || (rawScore && rawScore.toString().toLowerCase().indexOf("análise") !== -1);
+
         attempts.push({
           timestamp: normalizeSheetTimestamp(row[0]),
           name: (row[1] || "Jogador").toString().trim(),
           email: rowEmail,
-          date: normalizeSheetDate(row[3]),
-          score: Number(row[4] || 0),
+          date: rowDate,
+          score: isPending ? 0 : Number(rawScore || 0),
           totalQuestions: Number(row[5] || 5) || 5,
           percentage: (row[6] || "").toString().trim(),
           answers: (row[7] || "").toString().trim(),
-          tempoResposta: (row[8] !== undefined && row[8] !== null) ? row[8].toString().trim() : "-"
+          tempoResposta: (row[8] !== undefined && row[8] !== null) ? row[8].toString().trim() : "-",
+          varResponse: (row[9] !== undefined && row[9] !== null) ? row[9].toString().trim() : "-",
+          goldenKickSummary: (row[10] !== undefined && row[10] !== null) ? row[10].toString().trim() : "-",
+          isPendingManualReview: isPending
         });
       }
     }
