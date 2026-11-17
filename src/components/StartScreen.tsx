@@ -9,7 +9,7 @@ import {
   getSaoPauloTimeInfo,
   buildDay17SpeedRanking,
   isGoldenKickDay,
-  CHAMPION_CONFIG,
+  getEffectiveChampionConfig,
 } from '../competition/competitionEngine';
 import { storageService } from '../services/storageService';
 import { sheetsSyncService } from '../services/sheetsSyncService';
@@ -55,6 +55,13 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     buildDay17SpeedRanking(storageService.getAttempts())
   );
   const [loadingRanking, setLoadingRanking] = useState(true);
+  const [championConfig, setChampionConfig] = useState(() => getEffectiveChampionConfig());
+
+  useEffect(() => {
+    return storageService.subscribe(() => {
+      setChampionConfig(getEffectiveChampionConfig());
+    });
+  }, []);
 
   useEffect(() => {
     if (isTestMode) {
@@ -152,8 +159,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         </div>
       )}
 
-      {/* Botão do Campeão Oficial (visível somente após liberação presencial) */}
-      {CHAMPION_CONFIG.isReleased && onOpenChampionScreen && (
+      {/* Botão do Campeão Oficial (visível somente após liberação manual no Painel de Gestão) */}
+      {championConfig.isReleased && onOpenChampionScreen && (
         <div className="w-full max-w-xl mx-auto mb-5">
           <button
             type="button"

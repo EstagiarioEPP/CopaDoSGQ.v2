@@ -319,7 +319,7 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify({
       status: "online",
       competicao: "Copa do SGQ ACIM 2026",
-      periodo: "16/11/2026 a 20/11/2026",
+      periodo: "16/11/2026 a 19/11/2026",
       participantes: PARTICIPANTES_AUTORIZADOS.length,
       totalRegistros: attempts.length,
       attempts: attempts

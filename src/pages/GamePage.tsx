@@ -19,6 +19,7 @@ import { TimerWarningModal } from '../components/TimerWarningModal';
 import { VarReviewModal } from '../components/VarReviewModal';
 import { GoldenKickArena } from '../components/GoldenKickArena';
 import { ChampionScreen } from '../components/ChampionScreen';
+import { PostCompetitionMysteryScreen } from '../components/PostCompetitionMysteryScreen';
 import { sounds } from '../sound';
 import { Volume2, VolumeX, ShieldAlert, ArrowLeft, FlaskConical } from 'lucide-react';
 
@@ -29,7 +30,8 @@ import {
   isVarReviewDay,
   isGoldenKickDay,
   GOLDEN_KICK_SCENARIOS,
-  CHAMPION_CONFIG,
+  getEffectiveChampionConfig,
+  getCompetitionTimeline,
 } from '../competition/competitionEngine';
 
 interface GamePageProps {
@@ -40,8 +42,10 @@ interface GamePageProps {
 export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) => {
   const isTestMode = Boolean(testMode?.active);
   const isPreviewChampion = Boolean(testMode?.previewChampion);
+  const isPreviewMystery = Boolean(testMode?.previewMystery);
   const today =
     isTestMode && testMode?.simulatedDate ? testMode.simulatedDate : getSaoPauloDateString();
+  const timeline = getCompetitionTimeline(today);
   const isTimedRound = isTimedKnockoutDay(today);
   const isVarRound = isVarReviewDay(today);
   const isGoldenRound = isGoldenKickDay(today);
@@ -53,6 +57,8 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
   });
   const [theme, setTheme] = useState<GameTheme>(() => storageService.getTheme());
   const [webhookUrl, setWebhookUrl] = useState<string>(() => storageService.getWebhookUrl());
+  const [varQuestionText, setVarQuestionText] = useState<string>(() => storageService.getVarQuestion());
+  const [effectiveChampion, setEffectiveChampion] = useState(() => getEffectiveChampionConfig());
 
   // Atualiza perguntas ao alterar data simulada no Modo Teste ou alterações no storage
   useEffect(() => {
@@ -67,6 +73,8 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
       setQuestions(updatedDaily.length > 0 ? updatedDaily : storageService.getActiveQuestions());
       setTheme(storageService.getTheme());
       setWebhookUrl(storageService.getWebhookUrl());
+      setVarQuestionText(storageService.getVarQuestion());
+      setEffectiveChampion(getEffectiveChampionConfig());
     });
   }, [today]);
 
@@ -271,7 +279,11 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
   };
 
   const showingChampion =
-    isPreviewChampion || (CHAMPION_CONFIG.isReleased && showChampionPublic);
+    isPreviewChampion ||
+    (effectiveChampion.isReleased && (showChampionPublic || (!isTestMode && timeline.isEnded)));
+  const showingMystery =
+    !showingChampion &&
+    (isPreviewMystery || (!isTestMode && timeline.isEnded && !effectiveChampion.isReleased));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-amber-400 selection:text-slate-950 font-sans">
@@ -319,6 +331,10 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
               <>
                 <strong>Apresentação do Campeão</strong> · Prévia oficial da cerimônia de premiação
               </>
+            ) : isPreviewMystery ? (
+              <>
+                <strong>Prévia Momento ACIM</strong> · Tela misteriosa pós-19/11 (antes da liberação do campeão)
+              </>
             ) : (
               <>
                 <strong>Modo Teste Admin</strong> · Rodada simulada:{' '}
@@ -333,10 +349,21 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
       <main className="flex-1 flex flex-col justify-center items-center px-3 sm:px-6 py-4 w-full max-w-6xl mx-auto">
         {showingChampion ? (
           <ChampionScreen
-            championName={CHAMPION_CONFIG.championName}
-            championTitle={CHAMPION_CONFIG.championTitle}
-            onExit={isPreviewChampion ? onExitTestMode : () => setShowChampionPublic(false)}
+            championName={effectiveChampion.championName}
+            championTitle={effectiveChampion.championTitle}
+            onExit={
+              isPreviewChampion
+                ? onExitTestMode
+                : !timeline.isEnded
+                ? () => setShowChampionPublic(false)
+                : undefined
+            }
             exitLabel={isPreviewChampion ? 'Voltar ao Painel' : 'Voltar ao Início'}
+          />
+        ) : showingMystery ? (
+          <PostCompetitionMysteryScreen
+            onExitPreview={isPreviewMystery ? onExitTestMode : undefined}
+            exitLabel="Voltar ao Painel"
           />
         ) : questions.length === 0 && !isGoldenRound ? (
           <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center max-w-md">
@@ -411,6 +438,7 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
             {phase === 'VAR_REVIEW' && (
               <VarReviewModal
                 playerName={playerInfo.name}
+                questionText={varQuestionText}
                 onConfirmVar={(text) => {
                   setVarResponse(text);
                   if (!isTestMode) {

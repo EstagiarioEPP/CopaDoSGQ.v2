@@ -1,4 +1,4 @@
-import { Question, GameTheme, AttemptRecord } from '../types';
+import { Question, GameTheme, AttemptRecord, ChampionConfig } from '../types';
 import { DEFAULT_QUESTIONS, PRESET_THEMES } from '../defaultQuestions';
 
 const STORAGE_KEYS = {
@@ -7,9 +7,14 @@ const STORAGE_KEYS = {
   WEBHOOK: 'copa_sgq_webhook',
   PLAYED_EMAILS: 'copa_sgq_played_emails',
   ATTEMPTS: 'copa_sgq_attempts_v1',
+  VAR_QUESTION: 'copa_sgq_var_question_18_v1',
+  CHAMPION_RELEASE: 'copa_sgq_champion_release_v1',
 };
 
 export const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxqrWZt9-0r3TvJzI8yTTzkiULnTcxIulZsUTH6oB0tFlf_lkAc0K0SbXcosq6Cnqc/exec';
+
+export const DEFAULT_VAR_QUESTION_TEXT =
+  'CENÁRIO DE DESEMPATE (VAR): Um processo essencial do seu setor depende de apenas um colaborador, que sairá de férias na próxima semana, enquanto um associado aguarda atendimento dentro do prazo previsto na Política da Qualidade. Descreva 3 ações práticas que você executaria hoje — incluindo o que registraria no SIG Sistem — para tratar esse risco, garantir a continuidade do processo e cumprir os Valores e a Política da Qualidade da ACIM.';
 
 const DATA_UPDATED_EVENT = 'copa_sgq_data_updated';
 
@@ -20,7 +25,6 @@ export const storageService = {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length === 25 && parsed[0].respostas) {
-          // Normalize ativo field (defaults to true)
           return parsed.map((q) => ({
             ...q,
             ativo: q.ativo !== false,
@@ -30,7 +34,6 @@ export const storageService = {
     } catch (e) {
       console.error('Error loading questions from localStorage:', e);
     }
-    // Sempre garante as 25 perguntas oficiais completas
     const defaultList = DEFAULT_QUESTIONS.map((q) => ({ ...q, ativo: true }));
     try {
       localStorage.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(defaultList));
@@ -41,7 +44,6 @@ export const storageService = {
   getActiveQuestions(): Question[] {
     const all = this.getQuestions();
     const active = all.filter((q) => q.ativo !== false);
-    // Safety check: if no questions are active, return all
     return active.length > 0 ? active : all;
   },
 
@@ -51,6 +53,70 @@ export const storageService = {
       this.notifyUpdate();
     } catch (e) {
       console.error('Error saving questions to localStorage:', e);
+    }
+  },
+
+  getVarQuestion(): string {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.VAR_QUESTION);
+      if (saved && saved.trim().length > 0) {
+        return saved.trim();
+      }
+    } catch {}
+    return DEFAULT_VAR_QUESTION_TEXT;
+  },
+
+  saveVarQuestion(questionText: string): void {
+    try {
+      const clean = questionText.trim();
+      if (clean) {
+        localStorage.setItem(STORAGE_KEYS.VAR_QUESTION, clean);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.VAR_QUESTION);
+      }
+      this.notifyUpdate();
+    } catch (e) {
+      console.error('Error saving VAR question to localStorage:', e);
+    }
+  },
+
+  resetVarQuestion(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.VAR_QUESTION);
+      this.notifyUpdate();
+    } catch (e) {
+      console.error('Error resetting VAR question:', e);
+    }
+  },
+
+  getChampionRelease(): ChampionConfig | null {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CHAMPION_RELEASE);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.isReleased === 'boolean') {
+          return parsed as ChampionConfig;
+        }
+      }
+    } catch {}
+    return null;
+  },
+
+  saveChampionRelease(config: ChampionConfig): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CHAMPION_RELEASE, JSON.stringify(config));
+      this.notifyUpdate();
+    } catch (e) {
+      console.error('Error saving champion release config:', e);
+    }
+  },
+
+  clearChampionRelease(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CHAMPION_RELEASE);
+      this.notifyUpdate();
+    } catch (e) {
+      console.error('Error clearing champion release config:', e);
     }
   },
 
@@ -132,7 +198,6 @@ export const storageService = {
     }
   },
 
-  // Recupera e grava tentativas por data (email + data)
   getAttempts(): AttemptRecord[] {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.ATTEMPTS);
@@ -156,7 +221,6 @@ export const storageService = {
         date: recordDate,
       };
 
-      // Chave única: e-mail + data da rodada
       const existingIdx = attempts.findIndex(
         (a) => a.email.trim().toLowerCase() === cleanEmail && a.date === recordDate
       );
@@ -168,14 +232,13 @@ export const storageService = {
       }
 
       localStorage.setItem(STORAGE_KEYS.ATTEMPTS, JSON.stringify(attempts));
-      this.clearInProgressAttempt(); // limpa tentativa em andamento ao concluir
+      this.clearInProgressAttempt();
       this.notifyUpdate();
     } catch (e) {
       console.error('Error recording attempt:', e);
     }
   },
 
-  // Suporte a retomada de tentativa no mesmo dia em caso de refresh
   getInProgressAttempt(): {
     email: string;
     name: string;

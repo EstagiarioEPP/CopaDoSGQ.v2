@@ -1,23 +1,22 @@
 import { Question, AttemptRecord, ParticipantMatrixRow, GoldenKickScenario, ChampionConfig, Day17RankingEntry } from '../types';
-import { OFFICIAL_25_QUESTIONS } from '../defaultQuestions';
 import { storageService } from '../services/storageService';
 
 /**
  * MOTOR OFICIAL DA COPA DO SGQ ACIM (NOVEMBRO DE 2026)
  *
  * 1. 4 Participantes exclusivos
- * 2. 5 Dias (16 a 20 de novembro de 2026)
- * 3. 5 Perguntas fixas por dia (sem sorteio)
- * 4. Fuso horário oficial: America/Sao_Paulo
- * 5. 1 tentativa por participante por dia (08:00 às 18:00)
- * 6. Eliminação diária + Rodadas Especiais (18/11 VAR e 19/11 Chute de Ouro)
+ * 2. 4 Dias oficiais (16 a 19 de novembro de 2026 — 20/11 feriado removido)
+ * 3. Fuso horário oficial: America/Sao_Paulo
+ * 4. 1 tentativa por participante por dia (08:00 às 18:00)
+ * 5. Eliminação diária + Rodadas Especiais (18/11 VAR obrigatório e 19/11 Chute de Ouro)
+ * 6. Grande Campeão liberado exclusivamente após acionamento manual no Painel de Gestão
  */
 
 export const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo';
 export const OPERATING_HOURS_START = 8; // 08:00
-export const OPERATING_HOURS_END = 18; // 18:00 (bloqueado antes das 08:00 e a partir das 18:00)
+export const OPERATING_HOURS_END = 18; // 18:00
 
-// ÚNICOS 4 PARTICIPANTES OFICIAIS DA COPA DO SGQ 2026 (CONTA DE TESTE REMOVIDA)
+// ÚNICOS 4 PARTICIPANTES OFICIAIS DA COPA DO SGQ 2026
 export const AUTHORIZED_PARTICIPANTS: readonly string[] = [
   'consultor12@acim.com.br',
   'escoladenegocios2@acim.com.br',
@@ -25,19 +24,24 @@ export const AUTHORIZED_PARTICIPANTS: readonly string[] = [
   'supervisorcomercial@acim.com.br',
 ] as const;
 
-// LISTA TEMPORÁRIA DE E-MAILS ELIMINADOS NO MATA-MATA (PARA BLOQUEIO IMEDIATO ENTRE DISPOSITIVOS)
-// Adicione aqui os e-mails em minúsculas dos colaboradores eliminados antes do deploy:
-export const ELIMINATED_PARTICIPANTS: readonly string[] = [
-  // Exemplo: 'colaborador@acim.com.br',
-] as const;
+// LISTA TEMPORÁRIA DE E-MAILS ELIMINADOS NO MATA-MATA
+export const ELIMINATED_PARTICIPANTS: readonly string[] = [] as const;
 
-// CONFIGURAÇÃO DO GRANDE CAMPEÃO FINAL (MANTIDA COMO isReleased: false ATÉ A REVELAÇÃO PRESENCIAL)
+// CONFIGURAÇÃO ESTÁTICA PADRÃO DO GRANDE CAMPEÃO (SEMPRE OCULTA ATÉ LIBERAÇÃO MANUAL)
 export const CHAMPION_CONFIG: ChampionConfig = {
   isReleased: false,
   championName: 'Grande Campeão ACIM 2026',
   championEmail: '',
   championTitle: 'GRANDE CAMPEÃO DA COPA DO SGQ ACIM 2026',
 };
+
+export function getEffectiveChampionConfig(): ChampionConfig {
+  const stored = storageService.getChampionRelease();
+  if (stored) {
+    return stored;
+  }
+  return CHAMPION_CONFIG;
+}
 
 // DATAS ESPECIAIS DO MATA-MATA
 export const TIMED_KNOCKOUT_DATE = '2026-11-17';
@@ -102,17 +106,16 @@ export function isEliminatedParticipant(email: string | undefined | null): boole
   return ELIMINATED_PARTICIPANTS.some((p) => p.toLowerCase() === clean);
 }
 
-// 5 DIAS DA COMPETIÇÃO
+// 4 DIAS OFICIAIS DA COMPETIÇÃO (16/11 A 19/11 — SEM DIA 20/11 FERIADO)
 export const COMPETITION_DAYS = [
   { date: '2026-11-16', label: '16/11', dayIndex: 1, questionIds: ['Q01', 'Q02', 'Q03', 'Q04', 'Q05'] },
   { date: '2026-11-17', label: '17/11', dayIndex: 2, questionIds: ['Q06', 'Q07', 'Q08', 'Q09', 'Q10'] },
   { date: '2026-11-18', label: '18/11', dayIndex: 3, questionIds: ['Q11', 'Q12', 'Q13', 'Q14', 'Q15'] },
   { date: '2026-11-19', label: '19/11', dayIndex: 4, questionIds: ['Q16', 'Q17', 'Q18', 'Q19', 'Q20'] },
-  { date: '2026-11-20', label: '20/11', dayIndex: 5, questionIds: ['Q21', 'Q22', 'Q23', 'Q24', 'Q25'] },
 ] as const;
 
 export const START_DATE = '2026-11-16';
-export const END_DATE = '2026-11-20';
+export const END_DATE = '2026-11-19';
 
 /**
  * Obtém a data atual no formato YYYY-MM-DD estritamente no fuso America/Sao_Paulo.
@@ -168,19 +171,12 @@ export function getSaoPauloTimeInfo(baseDate: Date = new Date()): {
   }
 }
 
-/**
- * Verifica se um e-mail é de um dos participantes autorizados.
- */
 export function isAuthorizedParticipant(email: string | undefined | null): boolean {
   if (!email) return false;
   const clean = email.trim().toLowerCase();
   return AUTHORIZED_PARTICIPANTS.some((p) => p.toLowerCase() === clean);
 }
 
-/**
- * Retorna as 5 perguntas correspondentes à data oficial da rodada.
- * Utiliza a mesma fonte de dados compartilhada com o painel administrativo.
- */
 export function getQuestionsForDate(dateStr: string): Question[] {
   const match = COMPETITION_DAYS.find((d) => d.date === dateStr);
   const targetIds: readonly string[] = match ? match.questionIds : COMPETITION_DAYS[0].questionIds;
@@ -189,9 +185,6 @@ export function getQuestionsForDate(dateStr: string): Question[] {
   return allQuestions.filter((q) => targetIds.includes(q.id));
 }
 
-/**
- * Retorna a situação temporal da competição.
- */
 export function getCompetitionTimeline(currentDate: string = getSaoPauloDateString()) {
   if (currentDate < START_DATE) {
     return {
@@ -213,7 +206,7 @@ export function getCompetitionTimeline(currentDate: string = getSaoPauloDateStri
       isEnded: true,
       currentDate,
       dayInfo: null,
-      message: 'A competição foi oficialmente encerrada em 20 de novembro de 2026.',
+      message: 'As rodadas da Copa do SGQ 2026 foram concluídas em 19 de novembro de 2026.',
     };
   }
 
@@ -226,26 +219,19 @@ export function getCompetitionTimeline(currentDate: string = getSaoPauloDateStri
     isEnded: false,
     currentDate,
     dayInfo,
-    message: dayInfo ? `Rodada ${dayInfo.label} — Bateria ${dayInfo.dayIndex} de 5` : '',
+    message: dayInfo ? `Rodada ${dayInfo.label} — Bateria ${dayInfo.dayIndex} de 4` : '',
   };
 }
 
 /**
- * Calcula a matriz de desempenho da competição (Modelo C de Eliminação).
- *
- * Regras:
- * - Apenas participantes autorizados.
- * - Eliminação do participante com menor pontuação no dia.
- * - Empate na menor pontuação = ninguém é eliminado no dia.
- * - Participante que não jogar em dia ativo = 0 pontos para efeito de eliminação.
- * - Campeão = único participante restante, ou maior pontuação acumulada dos sobreviventes em 20/11.
+ * Calcula a matriz de desempenho da competição (16/11 a 19/11).
+ * IMPORTANTE: Nunca promove automaticamente ninguém a 'Campeão' — a revelação depende
+ * exclusivamente do acionamento manual no Painel de Gestão.
  */
 export function calculateCompetitionMatrix(attempts: AttemptRecord[]): ParticipantMatrixRow[] {
-  // Inicializa mapa de cada participante autorizado
   const matrix: Record<string, ParticipantMatrixRow> = {};
 
   AUTHORIZED_PARTICIPANTS.forEach((email) => {
-    // Procura nome registrado em alguma tentativa prévia
     const prevAttempt = attempts.find((a) => a.email.toLowerCase() === email.toLowerCase());
     const defaultName = prevAttempt?.name || email.split('@')[0];
 
@@ -257,49 +243,43 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
         '2026-11-17': null,
         '2026-11-18': null,
         '2026-11-19': null,
-        '2026-11-20': null,
       },
       total: 0,
       status: 'Ativo',
     };
   });
 
-  // Preenche as pontuações registradas nas tentativas
   attempts.forEach((att) => {
     const cleanEmail = att.email.toLowerCase();
     const row = matrix[cleanEmail];
     if (row && att.date in row.dias) {
-      row.dias[att.date] = att.score;
+      row.dias[att.date] = att.isPendingManualReview ? null : att.score;
       if (att.name && (!row.name || row.name === cleanEmail.split('@')[0])) {
         row.name = att.name;
       }
     }
   });
 
-  // Apuração progressiva dia a dia (Modelo C)
+  // Eliminação diária automática apenas nas rodadas objetivas (16/11, 17/11 e 18/11)
+  // Dia 19/11 é avaliação cega manual da banca do SGQ (Chute de Ouro).
   let activeEmails = [...AUTHORIZED_PARTICIPANTS];
 
   COMPETITION_DAYS.forEach((day) => {
-    // Só processa eliminação do dia se ao menos uma tentativa tiver sido realizada para essa data
+    if (day.date === GOLDEN_KICK_DATE) return;
     const dayHasAttempts = attempts.some((a) => a.date === day.date);
     if (!dayHasAttempts || activeEmails.length <= 1) return;
 
-    // Coleta a pontuação de todos os participantes que ainda estavam ativos
     const scores = activeEmails.map((email) => {
       const score = matrix[email].dias[day.date];
-      // Se não jogou no dia processado, pontuação é considerada 0
       return {
         email,
         score: score !== null ? score : 0,
       };
     });
 
-    // Menor pontuação do dia entre os ativos
     const minScore = Math.min(...scores.map((s) => s.score));
     const lowestParticipants = scores.filter((s) => s.score === minScore);
 
-    // Regra do Modelo C: se houver apenas UM participante com a menor pontuação, ele é eliminado.
-    // Se houver empate no menor valor, NINGUÉM é eliminado no dia!
     if (lowestParticipants.length === 1) {
       const eliminatedEmail = lowestParticipants[0].email;
       matrix[eliminatedEmail].status = 'Eliminado';
@@ -308,7 +288,6 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
     }
   });
 
-  // Garante marcação de eliminados configurados no array temporário de bloqueio
   ELIMINATED_PARTICIPANTS.forEach((elimEmail) => {
     const clean = elimEmail.trim().toLowerCase();
     if (matrix[clean] && matrix[clean].status !== 'Eliminado') {
@@ -318,35 +297,64 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
     }
   });
 
-  // Cálculo da pontuação total acumulada
   Object.values(matrix).forEach((row) => {
     row.total = Object.values(row.dias).reduce<number>((acc, score) => acc + (score || 0), 0);
   });
 
-  // Verificação de Campeão:
-  // 1. Se restou apenas 1 participante ativo
-  if (activeEmails.length === 1) {
-    matrix[activeEmails[0]].status = 'Campeão';
-  } else if (attempts.some((a) => a.date === '2026-11-20')) {
-    // 2. No final de 20/11 com mais de um sobrevivente: maior pontuação acumulada entre os ativos
-    const activeTotals = activeEmails.map((email) => ({
-      email,
-      total: matrix[email].total,
-    }));
-    const maxTotal = Math.max(...activeTotals.map((t) => t.total));
-    const winners = activeTotals.filter((t) => t.total === maxTotal);
-
-    winners.forEach((w) => {
-      matrix[w.email].status = 'Campeão';
-    });
+  // Marca como 'Campeão' na matriz SOMENTE se o gestor já tiver liberado oficialmente no Painel
+  const effectiveChampion = getEffectiveChampionConfig();
+  if (effectiveChampion.isReleased && effectiveChampion.championEmail) {
+    const champRow = matrix[effectiveChampion.championEmail.toLowerCase()];
+    if (champRow) {
+      champRow.status = 'Campeão';
+    }
   }
 
   return Object.values(matrix);
 }
 
 /**
- * Valida se o colaborador pode jogar na data especificada.
+ * Sugere automaticamente o vencedor da matriz de pontuação para o botão de liberação
+ * no Painel de Gestão, identificando empates para decisão manual da banca.
  */
+export function getSuggestedChampionCandidates(attempts: AttemptRecord[]): {
+  autoWinner: ParticipantMatrixRow | null;
+  tiedCandidates: ParticipantMatrixRow[];
+  activeFinalists: ParticipantMatrixRow[];
+} {
+  const matrix = calculateCompetitionMatrix(attempts);
+  const activeFinalists = matrix.filter((r) => r.status !== 'Eliminado');
+
+  if (activeFinalists.length === 0) {
+    return { autoWinner: null, tiedCandidates: [], activeFinalists: [] };
+  }
+
+  if (activeFinalists.length === 1) {
+    return {
+      autoWinner: activeFinalists[0],
+      tiedCandidates: [],
+      activeFinalists,
+    };
+  }
+
+  const maxTotal = Math.max(...activeFinalists.map((f) => f.total));
+  const topCandidates = activeFinalists.filter((f) => f.total === maxTotal);
+
+  if (topCandidates.length === 1) {
+    return {
+      autoWinner: topCandidates[0],
+      tiedCandidates: [],
+      activeFinalists,
+    };
+  }
+
+  return {
+    autoWinner: null,
+    tiedCandidates: topCandidates,
+    activeFinalists,
+  };
+}
+
 export function canParticipantPlayToday(
   email: string,
   dateStr: string,
@@ -359,12 +367,10 @@ export function canParticipantPlayToday(
   eliminatedDate?: string;
   isOutsideHours?: boolean;
 } {
-  // Em Modo Teste Administrativo, libera qualquer data, horário e ignora bloqueios
   if (options?.isTestMode) {
     return { allowed: true };
   }
 
-  // 0. Trava de horário oficial (08:00 às 18:00 - Horário de Brasília)
   if (!options?.bypassTimeCheck) {
     const timeInfo = getSaoPauloTimeInfo();
     if (!timeInfo.isWithinHours) {
@@ -382,7 +388,6 @@ export function canParticipantPlayToday(
 
   const cleanEmail = email.trim().toLowerCase();
 
-  // 1. Verificação se está na lista autorizada
   if (!isAuthorizedParticipant(cleanEmail)) {
     return {
       allowed: false,
@@ -390,7 +395,6 @@ export function canParticipantPlayToday(
     };
   }
 
-  // 2. Verificação direta no array temporário de eliminados no frontend
   if (isEliminatedParticipant(cleanEmail)) {
     return {
       allowed: false,
@@ -400,7 +404,6 @@ export function canParticipantPlayToday(
     };
   }
 
-  // 3. Verificação de eliminação na apuração local de dias anteriores
   const matrix = calculateCompetitionMatrix(attempts);
   const participantRow = matrix.find((r) => r.email.toLowerCase() === cleanEmail);
   if (participantRow && participantRow.status === 'Eliminado') {
@@ -412,30 +415,24 @@ export function canParticipantPlayToday(
     };
   }
 
-  // 4. Verificação se já jogou HOJE (e-mail + data)
   const alreadyPlayedToday = attempts.some(
     (a) => a.email.toLowerCase() === cleanEmail && a.date === dateStr
   );
   if (alreadyPlayedToday) {
     return {
       allowed: false,
-      reason: `⚠️ Você já realizou sua tentativa oficial de hoje (${dateStr.slice(8, 10)}/${dateStr.slice(5, 7)})! É permitida 1 tentativa por dia. Volte amanhã para a próxima rodada!`,
+      reason: `⚠️ Você já realizou sua tentativa oficial de hoje (${dateStr.slice(8, 10)}/${dateStr.slice(5, 7)})! É permitida 1 tentativa por dia.`,
     };
   }
 
   return { allowed: true };
 }
 
-/**
- * Gera o ranking de tempo de resposta da rodada de 17/11/2026 filtrando exclusivamente
- * os 4 participantes oficiais (ordenado por maior pontuação e menor tempo em décimos de segundo).
- */
 export function buildDay17SpeedRanking(attempts: AttemptRecord[]): Day17RankingEntry[] {
   const day17Attempts = attempts.filter(
     (att) => att.date === TIMED_KNOCKOUT_DATE && isAuthorizedParticipant(att.email)
   );
 
-  // Garante unicidade por e-mail oficial
   const byEmail = new Map<string, AttemptRecord>();
   day17Attempts.forEach((att) => {
     const clean = att.email.trim().toLowerCase();

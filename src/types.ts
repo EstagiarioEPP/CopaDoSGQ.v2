@@ -43,6 +43,7 @@ export interface TestModeConfig {
   simulatedDate: string; // YYYY-MM-DD
   ignoreSchedule: boolean;
   previewChampion?: boolean;
+  previewMystery?: boolean;
 }
 
 export interface GoldenKickScenario {
@@ -111,9 +112,8 @@ export type GamePhase =
   | 'AIMING'
   | 'SHOOTING'
   | 'RESULT_REVEAL'
-  // Ganchos estruturais para rodadas futuras (Dias 18 e 19):
-  | 'VAR_REVIEW' // Dia 18: jogador não é impedido de jogar, mas poderá escrever texto extra
-  | 'GOLDEN_KICK' // Dia 19: cenário sem múltipla escolha
+  | 'VAR_REVIEW'
+  | 'GOLDEN_KICK'
   | 'GAME_OVER';
 
 export interface GameTheme {
@@ -141,8 +141,7 @@ export type CompetitionDate =
   | '2026-11-16'
   | '2026-11-17'
   | '2026-11-18'
-  | '2026-11-19'
-  | '2026-11-20';
+  | '2026-11-19';
 
 export type CompetitionStatus = 'BEFORE_START' | 'ACTIVE' | 'ENDED';
 
@@ -158,7 +157,7 @@ export interface Participant {
 }
 
 export interface CompetitionScheduleDay {
-  dayIndex: number; // 1 a 5
+  dayIndex: number; // 1 a 4
   date: CompetitionDate;
   dateFormatted: string; // "16/11"
   questionIds: string[];

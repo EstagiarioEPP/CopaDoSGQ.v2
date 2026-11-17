@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Question, GameTheme, Corner, AttemptRecord, TestModeConfig } from '../../types';
 import { PRESET_THEMES, DEFAULT_QUESTIONS } from '../../defaultQuestions';
-import { storageService } from '../../services/storageService';
+import { storageService, DEFAULT_VAR_QUESTION_TEXT } from '../../services/storageService';
 import { sheetsSyncService, SyncStatus, OFFICIAL_SPREADSHEET_ID } from '../../services/sheetsSyncService';
 import { generateStandaloneHtml } from '../../exportStandaloneHtml';
 import { sounds } from '../../sound';
@@ -31,6 +31,10 @@ import {
   CheckCircle2,
   Eye,
   Tv,
+  Scale,
+  Lock,
+  Unlock,
+  EyeOff,
 } from 'lucide-react';
 import {
   calculateCompetitionMatrix,
@@ -41,15 +45,16 @@ import {
   isTimedKnockoutDay,
   isVarReviewDay,
   isGoldenKickDay,
-  CHAMPION_CONFIG,
+  GOLDEN_KICK_SCENARIOS,
+  getEffectiveChampionConfig,
+  getSuggestedChampionCandidates,
 } from '../../competition/competitionEngine';
 
 const DAY_TOPIC_TITLES: Record<number, string> = {
   1: '5S e Gestão da Informação / Não Conformidades',
-  2: 'Não Conformidades / Objetivos e Indicadores / Gestão de Riscos',
-  3: 'Gestão de Riscos / Missão, Visão, Valores e Política da Qualidade',
-  4: 'Visão Sistêmica e Melhoria Contínua / Atendimento',
-  5: 'Atendimento e Postura Profissional / LGPD',
+  2: 'Não Conformidades / Objetivos e Indicadores / Gestão de Riscos (Cronometrado)',
+  3: 'Gestão de Riscos / Missão, Visão, Valores e Política + VAR Desempate',
+  4: 'Grande Final — Chute de Ouro (3 Cenários Práticos ACIM & SIG Sistem)',
 };
 
 interface AdminDashboardProps {
@@ -91,6 +96,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [copiedCodeType, setCopiedCodeType] = useState<string | null>(null);
   const [selectedOpenResponseAttempt, setSelectedOpenResponseAttempt] = useState<AttemptRecord | null>(null);
 
+  // Pergunta aberta editável do VAR (18/11) e Controle Manual de Liberação do Campeão
+  const [varQuestionDraft, setVarQuestionDraft] = useState<string>(() => storageService.getVarQuestion());
+  const [varSavedNotice, setVarSavedNotice] = useState(false);
+  const [championRelease, setChampionRelease] = useState(() => getEffectiveChampionConfig());
+  const [selectedChampionEmail, setSelectedChampionEmail] = useState<string>('');
+
   const handleSyncSheets = useCallback(async () => {
     setSyncStatus('loading');
     const result = await sheetsSyncService.fetchAllAttempts(webhookUrl);
@@ -118,6 +129,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setQuestions(storageService.getQuestions());
       setTheme(storageService.getTheme());
       setWebhookUrl(storageService.getWebhookUrl());
+      setVarQuestionDraft(storageService.getVarQuestion());
+      setChampionRelease(getEffectiveChampionConfig());
       handleSyncSheets();
     });
   }, [handleSyncSheets]);
@@ -231,7 +244,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleResetDefault = () => {
     sounds.playBlip();
-    if (confirm('Deseja restaurar as perguntas originais dos 5 dias do SGQ (ACIM)?')) {
+    if (confirm('Deseja restaurar as perguntas originais dos 4 dias do SGQ (ACIM)?')) {
       const resetList = DEFAULT_QUESTIONS.map((q) => ({ ...q, ativo: true }));
       setQuestions(resetList);
       storageService.saveQuestions(resetList);
@@ -569,6 +582,7 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify({
       status: "online",
       competicao: "Copa do SGQ ACIM 2026",
+      periodo: "16/11/2026 a 19/11/2026",
       participantes: PARTICIPANTES_AUTORIZADOS.length,
       totalRegistros: attempts.length,
       attempts: attempts
@@ -592,7 +606,7 @@ function doGet(e) {
                 Painel Administrativo da Copa do SGQ
               </h1>
               <span className="text-xs text-slate-400">
-                Gerenciamento Oficial da Competição (16 a 20 de novembro de 2026)
+                Gerenciamento Oficial da Competição (16 a 19 de novembro de 2026)
               </span>
             </div>
           </div>
@@ -623,7 +637,7 @@ function doGet(e) {
                 });
               }}
               className="px-3.5 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-amber-300 border border-amber-400/50 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow whitespace-nowrap shrink-0"
-              title={`Prévia da celebração oficial (${CHAMPION_CONFIG.isReleased ? 'Liberada' : 'Oculta para jogadores até liberação'})`}
+              title={`Prévia da celebração oficial (${championRelease.isReleased ? 'Liberada para jogadores' : 'Oculta para jogadores até liberação'})`}
             >
               <Trophy className="w-4 h-4 text-amber-400" />
               <span>Apresentar Campeão</span>
@@ -669,7 +683,7 @@ function doGet(e) {
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
           >
-            <span>⚽ 25 Perguntas Oficiais (5 Dias)</span>
+            <span>⚽ Perguntas Oficiais (4 Dias · 16 a 19/11)</span>
           </button>
 
           <button
@@ -724,17 +738,17 @@ function doGet(e) {
 
       {/* Conteúdo Principal */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* ABA 1: PERGUNTAS OFICIAIS (25 PERGUNTAS / 5 DIAS) */}
+        {/* ABA 1: PERGUNTAS OFICIAIS (4 DIAS · 16/11 A 19/11) */}
         {activeTab === 'questions' && (
           <div className="space-y-6">
             <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-amber-400" />
-                  <span>25 Perguntas Oficiais — Calendário Fixo da Copa do SGQ</span>
+                  <span>Perguntas Oficiais — Calendário de 4 Dias (16/11 a 19/11)</span>
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Distribuição fixa de 5 perguntas por dia (sem sorteio ou repetição). Edições feitas aqui sincronizam imediatamente com o jogo dos jogadores.
+                  Rodadas objetivas (16 a 18/11), pergunta aberta obrigatória do VAR (18/11) e Grande Final Chute de Ouro (19/11). Dia 20/11 (feriado) removido.
                 </p>
               </div>
 
@@ -753,19 +767,23 @@ function doGet(e) {
                   type="button"
                   onClick={handleResetDefault}
                   className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1.5"
-                  title="Restaurar as 25 perguntas oficiais originais"
+                  title="Restaurar perguntas oficiais originais"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Restaurar 25 Perguntas SGQ</span>
+                  <span>Restaurar Padrão SGQ</span>
                 </button>
               </div>
             </div>
 
-            {/* Agrupamento das 25 Perguntas nos 5 Dias Oficiais */}
+            {/* Agrupamento das Perguntas nos 4 Dias Oficiais */}
             <div className="space-y-6">
               {COMPETITION_DAYS.map((day) => {
                 const targetIds: readonly string[] = day.questionIds;
                 const dayQuestions = questions.filter((q) => targetIds.includes(q.id));
+                const isVarDay = isVarReviewDay(day.date);
+                const isFinalDay = isGoldenKickDay(day.date);
+
+                const varCodeSnippet = `export const DEFAULT_VAR_QUESTION_TEXT =\n  ${JSON.stringify(varQuestionDraft.trim() || DEFAULT_VAR_QUESTION_TEXT)};`;
 
                 return (
                   <div
@@ -776,22 +794,114 @@ function doGet(e) {
                     <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
                       <div className="flex items-center gap-3">
                         <span className="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 font-['Press_Start_2P'] text-[10px] text-emerald-400">
-                          {day.label}/2026 · Rodada {day.dayIndex} de 5
+                          {day.label}/2026 · Rodada {day.dayIndex} de 4
                         </span>
                         <div>
                           <h3 className="text-sm font-bold text-white">
                             {DAY_TOPIC_TITLES[day.dayIndex] || `Bateria de Perguntas`}
                           </h3>
                           <span className="text-xs text-slate-400 font-mono">
-                            {day.questionIds.join(', ')} · 5 cobranças oficiais
+                            {isFinalDay
+                              ? '3 cenários práticos abertos (Chute de Ouro)'
+                              : `${day.questionIds.join(', ')} · 5 cobranças oficiais${isVarDay ? ' + VAR Desempate Obrigatório' : ''}`}
                           </span>
                         </div>
                       </div>
 
                       <span className="px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-[11px] font-mono text-amber-300">
-                        {dayQuestions.length} perguntas vinculadas
+                        {isFinalDay ? '3 cenários da Final' : `${dayQuestions.length} perguntas vinculadas`}
                       </span>
                     </div>
+
+                    {/* Card editável da Pergunta Obrigatória do VAR (Dia 18/11) */}
+                    {isVarDay && (
+                      <div className="p-4 sm:p-5 rounded-xl border-2 border-cyan-500/50 bg-cyan-950/20 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs sm:text-sm">
+                            <Scale className="w-4 h-4 shrink-0" />
+                            <span>Pergunta Aberta Obrigatória do VAR — Critério de Desempate (18/11)</span>
+                          </div>
+                          <span className="text-[11px] font-mono px-2.5 py-0.5 rounded bg-cyan-950 border border-cyan-500/40 text-cyan-200">
+                            Obrigatória · Qualquer texto não vazio
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          Exibida ao final da rodada de 18/11 como critério de desempate. Salva imediatamente neste navegador; para aplicar em todos os computadores, copie o trecho de código abaixo em <span className="font-mono text-cyan-300">src/services/storageService.ts</span>.
+                        </p>
+
+                        <textarea
+                          rows={3}
+                          value={varQuestionDraft}
+                          onChange={(e) => setVarQuestionDraft(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-950 border border-cyan-500/40 rounded-xl text-xs sm:text-sm text-white focus:outline-hidden focus:border-cyan-300 leading-relaxed"
+                          placeholder="Digite a pergunta avaliativa de desempate do VAR..."
+                        />
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sounds.playWhistle();
+                                storageService.saveVarQuestion(varQuestionDraft);
+                                setVarSavedNotice(true);
+                                setTimeout(() => setVarSavedNotice(false), 2500);
+                              }}
+                              className="px-3.5 py-2 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5"
+                            >
+                              {varSavedNotice ? <Check className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                              <span>{varSavedNotice ? 'Pergunta VAR Salva!' : 'Salvar Pergunta do VAR'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sounds.playBlip();
+                                storageService.resetVarQuestion();
+                                setVarQuestionDraft(DEFAULT_VAR_QUESTION_TEXT);
+                              }}
+                              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl cursor-pointer flex items-center gap-1.5"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Restaurar Padrão</span>
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(varCodeSnippet, 'var-code')}
+                            className="px-3 py-2 bg-slate-950 hover:bg-slate-800 border border-cyan-500/40 text-cyan-300 text-xs font-mono rounded-xl cursor-pointer flex items-center gap-1.5"
+                          >
+                            {copiedCodeType === 'var-code' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            <span>{copiedCodeType === 'var-code' ? 'Código Copiado!' : 'Copiar Código (Outros PCs)'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Resumo dos 3 Cenários do Chute de Ouro (Dia 19/11) */}
+                    {isFinalDay && (
+                      <div className="p-4 sm:p-5 rounded-xl border-2 border-amber-500/40 bg-amber-950/15 space-y-3">
+                        <div className="flex items-center gap-2 text-amber-300 font-bold text-xs sm:text-sm">
+                          <Trophy className="w-4 h-4 shrink-0" />
+                          <span>Modo Grande Final (19/11): Chute de Ouro — 3 Cenários Abertos</span>
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          Na data 19/11/2026 os finalistas respondem 1 cenário por vez com 3 campos (Diagnóstico, Contenção no SIG Sistem/ACIM e Ação Preventiva), enviados diretamente para avaliação da banca na Coluna 11 da planilha.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                          {GOLDEN_KICK_SCENARIOS.map((sc) => (
+                            <div key={sc.id} className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 space-y-1">
+                              <span className="text-[11px] font-bold text-amber-300 block">{sc.title}</span>
+                              <span className="text-[10px] font-mono text-slate-400 block">
+                                {sc.themesCrossed.join(' · ')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Lista das 5 perguntas deste dia */}
                     <div className="space-y-4">
@@ -1088,6 +1198,23 @@ function doGet(e) {
         {/* ABA 5: TENTATIVAS & COMPETIÇÃO */}
         {activeTab === 'players' && (() => {
           const matrix = calculateCompetitionMatrix(attempts);
+          const candidateInfo = getSuggestedChampionCandidates(attempts);
+          const fallbackEmail =
+            candidateInfo.autoWinner?.email ||
+            candidateInfo.tiedCandidates[0]?.email ||
+            candidateInfo.activeFinalists[0]?.email ||
+            matrix[0]?.email ||
+            '';
+          const resolvedEmail =
+            selectedChampionEmail ||
+            (championRelease.isReleased && championRelease.championEmail
+              ? championRelease.championEmail
+              : fallbackEmail);
+          const chosenRow =
+            matrix.find((r) => r.email.toLowerCase() === resolvedEmail.toLowerCase()) || matrix[0];
+
+          const championCodeSnippet = `export const CHAMPION_CONFIG: ChampionConfig = {\n  isReleased: true,\n  championName: ${JSON.stringify(chosenRow?.name || championRelease.championName)},\n  championEmail: ${JSON.stringify(chosenRow?.email || championRelease.championEmail)},\n  championTitle: 'GRANDE CAMPEÃO DA COPA DO SGQ ACIM 2026',\n};`;
+
           const distinctEmailsWithAttempts = new Set(attempts.map((a) => a.email.toLowerCase())).size;
           const activeParticipantsCount = matrix.filter((m) => m.status !== 'Eliminado').length;
           const scoredAttempts = attempts.filter(
@@ -1107,7 +1234,7 @@ function doGet(e) {
                     <span>Competição 2026 — Apuração Real (Planilha + Sistema)</span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-1">
-                    Acompanhamento diário dos participantes (16 a 20 de novembro · 08:00 às 18:00) sincronizado com a planilha oficial.
+                    Acompanhamento diário dos participantes (16 a 19 de novembro · 08:00 às 18:00) sincronizado com a planilha oficial.
                   </p>
                 </div>
 
@@ -1188,6 +1315,154 @@ function doGet(e) {
                 </div>
               </div>
 
+              {/* CONTROLE DE LIBERAÇÃO DO GRANDE CAMPEÃO (MOMENTO ACIM) */}
+              <div className="p-5 rounded-2xl border-2 border-amber-400/50 bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950/20 space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>Liberação do Grande Campeão (Momento ACIM)</span>
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      O campeão nunca é exibido automaticamente após 19/11. Enquanto estiver oculto, os colaboradores veem a tela misteriosa <em>&ldquo;Aguarde a divulgação no próximo Momento ACIM&rdquo;</em>.
+                    </p>
+                  </div>
+
+                  {championRelease.isReleased ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 text-xs font-bold whitespace-nowrap">
+                      <Unlock className="w-3.5 h-3.5" />
+                      <span>ANUNCIADO: {championRelease.championName}</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold whitespace-nowrap">
+                      <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>OCULTO DOS JOGADORES</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Vencedor automático ou seleção manual em caso de empate */}
+                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+                  {candidateInfo.autoWinner ? (
+                    <div className="text-xs text-emerald-300 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>
+                        Vencedor identificado automaticamente pela matriz: <strong>{candidateInfo.autoWinner.name}</strong> ({candidateInfo.autoWinner.total} gols).
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-amber-300 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>
+                        {candidateInfo.tiedCandidates.length > 0
+                          ? 'Empate identificado na matriz — escolha abaixo quem a gestão definiu como Grande Campeão:'
+                          : 'Selecione abaixo o participante definido pela gestão:'}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {matrix.map((row) => {
+                      const isSelected = chosenRow?.email.toLowerCase() === row.email.toLowerCase();
+                      return (
+                        <label
+                          key={row.email}
+                          className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 cursor-pointer transition-all ${
+                            isSelected
+                              ? 'border-amber-400 bg-amber-400/15 text-white'
+                              : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="radio"
+                              name="champion-candidate"
+                              checked={isSelected}
+                              onChange={() => {
+                                sounds.playBlip();
+                                setSelectedChampionEmail(row.email);
+                              }}
+                              className="accent-amber-400 cursor-pointer shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <div className="font-bold truncate">{row.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono truncate">{row.email}</div>
+                            </div>
+                          </div>
+                          <span className="font-mono text-[11px] text-amber-300 shrink-0 tabular-nums">
+                            {row.total} pts · {row.status}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={!chosenRow}
+                      onClick={() => {
+                        if (!chosenRow) return;
+                        sounds.playChampionFanfare();
+                        storageService.saveChampionRelease({
+                          isReleased: true,
+                          championName: chosenRow.name,
+                          championEmail: chosenRow.email,
+                          championTitle: 'GRANDE CAMPEÃO DA COPA DO SGQ ACIM 2026',
+                        });
+                      }}
+                      className="px-4 py-2.5 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-bold text-xs rounded-xl shadow cursor-pointer flex items-center gap-2"
+                    >
+                      <Unlock className="w-4 h-4" />
+                      <span>Liberar e Anunciar Grande Campeão</span>
+                    </button>
+
+                    {championRelease.isReleased && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.playBlip();
+                          storageService.clearChampionRelease();
+                        }}
+                        className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-xl cursor-pointer flex items-center gap-1.5"
+                      >
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>Ocultar Novamente</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sounds.playWhistle();
+                        onStartTestGame({
+                          active: true,
+                          simulatedDate: '2026-11-20',
+                          ignoreSchedule: true,
+                          previewChampion: true,
+                        });
+                      }}
+                      className="px-3.5 py-2.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-amber-300 border border-amber-400/40 text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Trophy className="w-3.5 h-3.5" />
+                      <span>Abrir Cerimônia em Tela Cheia</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(championCodeSnippet, 'champion-code')}
+                    className="px-3 py-2 bg-slate-950 hover:bg-slate-800 border border-amber-400/40 text-amber-300 text-xs font-mono rounded-xl cursor-pointer flex items-center gap-1.5"
+                    title="Copia CHAMPION_CONFIG para colar em src/competition/competitionEngine.ts e publicar para todos os computadores"
+                  >
+                    {copiedCodeType === 'champion-code' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedCodeType === 'champion-code' ? 'Código Copiado!' : 'Copiar Código (Outros PCs)'}</span>
+                  </button>
+                </div>
+              </div>
+
               {/* 4 Cards de Métricas Reais do Sistema */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl">
@@ -1232,7 +1507,7 @@ function doGet(e) {
                     <span>📊 VISÃO RESUMIDA (COLABORADORES × DIAS)</span>
                   </h3>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    5 rodadas · 5 perguntas/dia (Modelo C)
+                    4 rodadas · 16/11 a 19/11
                   </span>
                 </div>
 
@@ -1246,7 +1521,6 @@ function doGet(e) {
                           <th className="px-3 py-3 text-center">17/11</th>
                           <th className="px-3 py-3 text-center">18/11</th>
                           <th className="px-3 py-3 text-center">19/11</th>
-                          <th className="px-3 py-3 text-center">20/11</th>
                           <th className="px-3 py-3 text-center font-bold text-white">Total</th>
                           <th className="px-4 py-3 text-right">Situação</th>
                         </tr>
@@ -1302,11 +1576,6 @@ function doGet(e) {
                                   }
                                   return row.dias['2026-11-19'] !== null ? `${row.dias['2026-11-19']}/5` : '—';
                                 })()}
-                              </td>
-
-                              {/* 20/11 */}
-                              <td className="px-3 py-3 text-center">
-                                {row.dias['2026-11-20'] !== null ? `${row.dias['2026-11-20']}/5` : '—'}
                               </td>
 
                               {/* Total Acumulado */}
@@ -1610,30 +1879,51 @@ function doGet(e) {
               </span>
             </div>
 
-            <div className="flex justify-end gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => setShowTestModal(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl text-slate-300 cursor-pointer"
-              >
-                Cancelar
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => {
-                  sounds.playWhistle();
+                  sounds.playBlip();
                   setShowTestModal(false);
                   onStartTestGame({
                     active: true,
-                    simulatedDate: testDate,
+                    simulatedDate: '2026-11-20',
                     ignoreSchedule: true,
+                    previewMystery: true,
                   });
                 }}
-                className="px-5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow"
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-amber-400/40 text-amber-300 text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer"
+                title="Visualizar a tela misteriosa exibida após 19/11 antes da liberação do campeão"
               >
-                <Play className="w-3.5 h-3.5 fill-slate-950" />
-                <span>Iniciar Simulação</span>
+                <Eye className="w-3.5 h-3.5" />
+                <span>Prévia Pós-19/11 (Momento ACIM)</span>
               </button>
+
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setShowTestModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl text-slate-300 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playWhistle();
+                    setShowTestModal(false);
+                    onStartTestGame({
+                      active: true,
+                      simulatedDate: testDate,
+                      ignoreSchedule: true,
+                    });
+                  }}
+                  className="px-5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow"
+                >
+                  <Play className="w-3.5 h-3.5 fill-slate-950" />
+                  <span>Iniciar Simulação</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
