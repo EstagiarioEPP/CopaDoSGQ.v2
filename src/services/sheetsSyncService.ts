@@ -5,7 +5,7 @@ import {
   GoldenKickEvaluation,
   GoldenKickAnswer,
 } from '../types';
-import { storageService } from './storageService';
+import { storageService, DEFAULT_EVALUATION_CRITERIA } from './storageService';
 
 export const OFFICIAL_SPREADSHEET_ID = '1gZ6lMxCUw3GUGgHkhsifDZ_IwGolb9tXOFty3l4OTZA';
 
@@ -71,6 +71,28 @@ function buildActionUrl(baseUrl: string, action: string): string {
   const cleanUrl = (baseUrl || '').trim();
   const sep = cleanUrl.includes('?') ? '&' : '?';
   return `${cleanUrl}${sep}action=${encodeURIComponent(action)}&_t=${Date.now()}`;
+}
+
+function normalizeRemoteConfig(raw: any): RemoteCompetitionConfig {
+  const criteria: [string, string, string] =
+    Array.isArray(raw?.evaluationCriteria) && raw.evaluationCriteria.length === 3
+      ? [
+          String(raw.evaluationCriteria[0] || DEFAULT_EVALUATION_CRITERIA[0]).trim() || DEFAULT_EVALUATION_CRITERIA[0],
+          String(raw.evaluationCriteria[1] || DEFAULT_EVALUATION_CRITERIA[1]).trim() || DEFAULT_EVALUATION_CRITERIA[1],
+          String(raw.evaluationCriteria[2] || DEFAULT_EVALUATION_CRITERIA[2]).trim() || DEFAULT_EVALUATION_CRITERIA[2],
+        ]
+      : DEFAULT_EVALUATION_CRITERIA;
+
+  return {
+    eliminatedEmails: Array.isArray(raw?.eliminatedEmails)
+      ? raw.eliminatedEmails.map((e: string) => String(e).trim().toLowerCase()).filter(Boolean)
+      : [],
+    championEmail: String(raw?.championEmail || '').trim().toLowerCase(),
+    championName: String(raw?.championName || '').trim(),
+    isChampionReleased: Boolean(raw?.isChampionReleased),
+    crownedAt: raw?.crownedAt ? String(raw.crownedAt) : undefined,
+    evaluationCriteria: criteria,
+  };
 }
 
 async function postAction(
@@ -248,13 +270,7 @@ export const sheetsSyncService = {
       const data = await response.json();
 
       if (data?.config && Array.isArray(data.config.eliminatedEmails)) {
-        const remoteCfg: RemoteCompetitionConfig = {
-          eliminatedEmails: data.config.eliminatedEmails.map((e: string) => String(e).trim().toLowerCase()),
-          championEmail: String(data.config.championEmail || '').trim().toLowerCase(),
-          championName: String(data.config.championName || '').trim(),
-          isChampionReleased: Boolean(data.config.isChampionReleased),
-          crownedAt: data.config.crownedAt ? String(data.config.crownedAt) : undefined,
-        };
+        const remoteCfg = normalizeRemoteConfig(data.config);
         storageService.saveRemoteConfig(remoteCfg);
       }
 
@@ -352,13 +368,7 @@ export const sheetsSyncService = {
       if (!res.ok) return cached;
       const data = await res.json();
       if (data?.config && Array.isArray(data.config.eliminatedEmails)) {
-        const cfg: RemoteCompetitionConfig = {
-          eliminatedEmails: data.config.eliminatedEmails.map((e: string) => String(e).trim().toLowerCase()),
-          championEmail: String(data.config.championEmail || '').trim().toLowerCase(),
-          championName: String(data.config.championName || '').trim(),
-          isChampionReleased: Boolean(data.config.isChampionReleased),
-          crownedAt: data.config.crownedAt ? String(data.config.crownedAt) : undefined,
-        };
+        const cfg = normalizeRemoteConfig(data.config);
         storageService.saveRemoteConfig(cfg);
         return cfg;
       }
@@ -377,8 +387,9 @@ export const sheetsSyncService = {
 
     const res = await postAction(webhookUrl, 'eliminatePlayer', { email: cleanEmail });
     if (res.data?.config) {
-      storageService.saveRemoteConfig(res.data.config);
-      return res.data.config;
+      const normalized = normalizeRemoteConfig(res.data.config);
+      storageService.saveRemoteConfig(normalized);
+      return normalized;
     }
     return optimistic;
   },
@@ -394,8 +405,36 @@ export const sheetsSyncService = {
 
     const res = await postAction(webhookUrl, 'restorePlayer', { email: cleanEmail });
     if (res.data?.config) {
-      storageService.saveRemoteConfig(res.data.config);
-      return res.data.config;
+      const normalized = normalizeRemoteConfig(res.data.config);
+      storageService.saveRemoteConfig(normalized);
+      return normalized;
+    }
+    return optimistic;
+  },
+
+  async saveEvaluationCriteria(
+    webhookUrl: string,
+    criteria: [string, string, string]
+  ): Promise<RemoteCompetitionConfig> {
+    const sanitized: [string, string, string] = [
+      criteria[0].trim() || DEFAULT_EVALUATION_CRITERIA[0],
+      criteria[1].trim() || DEFAULT_EVALUATION_CRITERIA[1],
+      criteria[2].trim() || DEFAULT_EVALUATION_CRITERIA[2],
+    ];
+    const current = storageService.getRemoteConfig();
+    const optimistic: RemoteCompetitionConfig = {
+      ...current,
+      evaluationCriteria: sanitized,
+    };
+    storageService.saveRemoteConfig(optimistic);
+
+    const res = await postAction(webhookUrl, 'saveCriteria', {
+      evaluationCriteria: sanitized,
+    });
+    if (res.data?.config) {
+      const normalized = normalizeRemoteConfig(res.data.config);
+      storageService.saveRemoteConfig(normalized);
+      return normalized;
     }
     return optimistic;
   },
@@ -444,10 +483,17 @@ export const sheetsSyncService = {
 
   async saveEvaluation19(webhookUrl: string, evaluation: GoldenKickEvaluation): Promise<GoldenKickEvaluation[]> {
     const updated = storageService.upsertDay19Evaluation(evaluation);
+    const savedItem = updated.find(
+      (e) =>
+        e.email.toLowerCase() === evaluation.email.trim().toLowerCase() &&
+        e.scenarioId === evaluation.scenarioId
+    );
     const res = await postAction(webhookUrl, 'saveEvaluation', {
       email: evaluation.email.trim().toLowerCase(),
       scenarioId: evaluation.scenarioId,
-      stars: evaluation.stars,
+      dayDate: savedItem?.dayDate || evaluation.dayDate || '2026-11-19',
+      stars: savedItem?.stars ?? evaluation.stars,
+      criteriaStars: savedItem?.criteriaStars || evaluation.criteriaStars,
     });
     if (res.data && Array.isArray(res.data.evaluations)) {
       storageService.saveDay19Evaluations(res.data.evaluations);
@@ -477,8 +523,9 @@ export const sheetsSyncService = {
 
     const res = await postAction(webhookUrl, 'crownChampion', { email: cleanEmail, name: cleanName });
     if (res.data?.config) {
-      storageService.saveRemoteConfig(res.data.config);
-      return res.data.config;
+      const normalized = normalizeRemoteConfig(res.data.config);
+      storageService.saveRemoteConfig(normalized);
+      return normalized;
     }
     return optimistic;
   },
@@ -497,8 +544,9 @@ export const sheetsSyncService = {
 
     const res = await postAction(webhookUrl, 'uncrownChampion', {});
     if (res.data?.config) {
-      storageService.saveRemoteConfig(res.data.config);
-      return res.data.config;
+      const normalized = normalizeRemoteConfig(res.data.config);
+      storageService.saveRemoteConfig(normalized);
+      return normalized;
     }
     return optimistic;
   },

@@ -185,12 +185,31 @@ function readConfigData() {
     } catch (err) {}
   }
 
+  var defaultCriteria = [
+    "1. Diagnóstico e Domínio dos Temas SGQ",
+    "2. Aplicação Prática na ACIM / SIG Sistem",
+    "3. Clareza e Visão Preventiva / Sistêmica"
+  ];
+  var evaluationCriteria = defaultCriteria;
+  if (map.evaluationCriteria) {
+    try {
+      var parsedCriteria = JSON.parse(map.evaluationCriteria);
+      if (Array.isArray(parsedCriteria) && parsedCriteria.length === 3) {
+        evaluationCriteria = parsedCriteria.map(function(c, idx) {
+          var txt = (c || "").toString().trim();
+          return txt || defaultCriteria[idx];
+        });
+      }
+    } catch (err) {}
+  }
+
   return {
     eliminatedEmails: eliminatedEmails,
     championEmail: (map.championEmail || "").trim().toLowerCase(),
     championName: (map.championName || "").trim(),
     isChampionReleased: map.isChampionReleased === "true",
-    crownedAt: (map.crownedAt || "").trim()
+    crownedAt: (map.crownedAt || "").trim(),
+    evaluationCriteria: evaluationCriteria
   };
 }
 
@@ -322,46 +341,106 @@ function saveQuestions19Data(scenarios) {
 // GESTÃO DA ABA "AvaliacoesDia19" (NOTAS DE 1 A 5 ESTRELAS)
 // =========================================================================
 
-function readEvaluations19Data() {
+function getEvaluationsSheet() {
   var sheet = getOrCreateTab(SHEET_NAMES.EVALUATIONS_19, [
     "Email",
     "CenarioID",
     "Estrelas",
-    "AtualizadoEm"
+    "AtualizadoEm",
+    "Dia",
+    "Criterio1",
+    "Criterio2",
+    "Criterio3"
   ]);
+  var extraHeaders = [
+    { col: 5, title: "Dia" },
+    { col: 6, title: "Criterio1" },
+    { col: 7, title: "Criterio2" },
+    { col: 8, title: "Criterio3" }
+  ];
+  for (var h = 0; h < extraHeaders.length; h++) {
+    var cell = sheet.getRange(1, extraHeaders[h].col);
+    if (!cell.getValue()) {
+      cell.setValue(extraHeaders[h].title)
+        .setFontWeight("bold")
+        .setBackground("#0f172a")
+        .setFontColor("#facc15");
+    }
+  }
+  return sheet;
+}
+
+function readEvaluations19Data() {
+  var sheet = getEvaluationsSheet();
   var numRows = sheet.getLastRow();
   if (numRows <= 1) return [];
 
-  var rows = sheet.getRange(2, 1, numRows - 1, 4).getValues();
+  var numCols = Math.max(sheet.getLastColumn(), 8);
+  var rows = sheet.getRange(2, 1, numRows - 1, numCols).getValues();
   var list = [];
   for (var i = 0; i < rows.length; i++) {
     var email = (rows[i][0] || "").toString().trim().toLowerCase();
     var scenarioId = (rows[i][1] || "").toString().trim();
-    var stars = Number(rows[i][2] || 0);
+    var rawStars = Number(rows[i][2] || 0);
     if (!email || !scenarioId) continue;
+
+    var rawDay = normalizeSheetDate(rows[i][4]);
+    var dayDate = rawDay || (scenarioId === "VAR-18" ? "2026-11-18" : "2026-11-19");
+
+    var c1 = Number(rows[i][5] || 0);
+    var c2 = Number(rows[i][6] || 0);
+    var c3 = Number(rows[i][7] || 0);
+    var hasCriteria = c1 > 0 || c2 > 0 || c3 > 0;
+    var criteriaStars = hasCriteria ? [c1, c2, c3] : undefined;
+
+    var computedAvg = rawStars;
+    if (hasCriteria) {
+      var rated = [c1, c2, c3].filter(function(v) { return v > 0; });
+      if (rated.length > 0) {
+        var sum = rated.reduce(function(acc, v) { return acc + v; }, 0);
+        computedAvg = Math.round((sum / rated.length) * 10) / 10;
+      }
+    }
 
     list.push({
       email: email,
       scenarioId: scenarioId,
-      stars: stars,
+      dayDate: dayDate,
+      stars: computedAvg,
+      criteriaStars: criteriaStars,
       updatedAt: normalizeSheetTimestamp(rows[i][3])
     });
   }
   return list;
 }
 
-function upsertEvaluation19(email, scenarioId, stars) {
+function upsertEvaluation19(email, scenarioId, stars, dayDate, criteriaStars) {
   var cleanEmail = (email || "").toString().trim().toLowerCase();
   var cleanScenario = (scenarioId || "").toString().trim();
-  var clampedStars = Math.max(1, Math.min(5, Math.round(Number(stars || 1))));
   if (!cleanEmail || !cleanScenario) return false;
 
-  var sheet = getOrCreateTab(SHEET_NAMES.EVALUATIONS_19, [
-    "Email",
-    "CenarioID",
-    "Estrelas",
-    "AtualizadoEm"
-  ]);
+  var cleanDay = normalizeSheetDate(dayDate) || (cleanScenario === "VAR-18" ? "2026-11-18" : "2026-11-19");
+  var c1 = 0;
+  var c2 = 0;
+  var c3 = 0;
+  var avgStars = Number(stars || 0);
+
+  if (Array.isArray(criteriaStars) && criteriaStars.length === 3) {
+    c1 = Math.max(0, Math.min(5, Math.round(Number(criteriaStars[0] || 0))));
+    c2 = Math.max(0, Math.min(5, Math.round(Number(criteriaStars[1] || 0))));
+    c3 = Math.max(0, Math.min(5, Math.round(Number(criteriaStars[2] || 0))));
+    var rated = [c1, c2, c3].filter(function(v) { return v > 0; });
+    if (rated.length > 0) {
+      var sum = rated.reduce(function(acc, v) { return acc + v; }, 0);
+      avgStars = Math.round((sum / rated.length) * 10) / 10;
+    } else {
+      avgStars = 0;
+    }
+  } else {
+    avgStars = Math.max(1, Math.min(5, Math.round((avgStars || 1) * 10) / 10));
+  }
+
+  var sheet = getEvaluationsSheet();
   var numRows = sheet.getLastRow();
   var ts = nowSpTimestamp();
 
@@ -371,13 +450,13 @@ function upsertEvaluation19(email, scenarioId, stars) {
       var rEmail = (rows[i][0] || "").toString().trim().toLowerCase();
       var rScenario = (rows[i][1] || "").toString().trim();
       if (rEmail === cleanEmail && rScenario === cleanScenario) {
-        sheet.getRange(i + 2, 3, 1, 2).setValues([[clampedStars, ts]]);
+        sheet.getRange(i + 2, 3, 1, 6).setValues([[avgStars, ts, cleanDay, c1, c2, c3]]);
         return true;
       }
     }
   }
 
-  sheet.appendRow([cleanEmail, cleanScenario, clampedStars, ts]);
+  sheet.appendRow([cleanEmail, cleanScenario, avgStars, ts, cleanDay, c1, c2, c3]);
   return true;
 }
 
@@ -432,10 +511,24 @@ function doPost(e) {
       return jsonOutput({ success: true, savedCount: count, questions19: readQuestions19Data() });
     }
 
-    // ROTA 4: SALVAR AVALIAÇÃO DE 1 A 5 ESTRELAS
+    // ROTA 4: SALVAR AVALIAÇÃO DE 1 A 5 ESTRELAS (3 CRITÉRIOS — DIAS 18 E 19)
     if (action === "saveEvaluation") {
-      var ok = upsertEvaluation19(data.email, data.scenarioId, data.stars);
+      var ok = upsertEvaluation19(data.email, data.scenarioId, data.stars, data.dayDate, data.criteriaStars);
       return jsonOutput({ success: ok, evaluations: readEvaluations19Data() });
+    }
+
+    // ROTA 4B: SALVAR NOMES DOS 3 CRITÉRIOS DE AVALIAÇÃO
+    if (action === "saveCriteria") {
+      var rawCriteria = Array.isArray(data.evaluationCriteria) ? data.evaluationCriteria : [];
+      if (rawCriteria.length !== 3) {
+        return jsonOutput({ success: false, error: "Informe exatamente 3 critérios." });
+      }
+      var sanitized = rawCriteria.map(function(c, idx) {
+        var str = (c || "").toString().trim();
+        return str || ("Critério " + (idx + 1));
+      });
+      upsertConfigKey("evaluationCriteria", JSON.stringify(sanitized));
+      return jsonOutput({ success: true, config: readConfigData() });
     }
 
     // ROTA 5: COROAR GRANDE CAMPEÃO

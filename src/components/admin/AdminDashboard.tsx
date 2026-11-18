@@ -560,7 +560,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }`}
           >
             <Star className="w-3.5 h-3.5" />
-            <span>Avaliação Final (19/11)</span>
+            <span>Avaliação (18 e 19/11)</span>
           </button>
         </div>
       </div>
@@ -1417,7 +1417,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 )}
                                 {isEliminated && (
                                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 whitespace-nowrap">
-                                    <span>Eliminado ({row.eliminatedDate || 'Gestão'})</span>
+                                    <span>
+                                      {row.eliminatedDate
+                                        ? `Eliminado (${row.eliminatedDate})`
+                                        : 'Eliminado'}
+                                    </span>
                                   </span>
                                 )}
                                 {!isChampion && !isEliminated && (

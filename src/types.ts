@@ -88,12 +88,15 @@ export interface RemoteCompetitionConfig {
   championName: string;
   isChampionReleased: boolean;
   crownedAt?: string;
+  evaluationCriteria?: [string, string, string];
 }
 
 export interface GoldenKickEvaluation {
   email: string;
   scenarioId: string;
-  stars: number; // 1 a 5
+  dayDate?: string; // '2026-11-18' ou '2026-11-19'
+  stars: number; // Média de 1 a 5
+  criteriaStars?: [number, number, number]; // Notas individuais dos 3 critérios (0 = não avaliado, 1..5)
   updatedAt?: string;
 }
 

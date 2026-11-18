@@ -18,7 +18,7 @@ const STORAGE_KEYS = {
   VAR_QUESTION: 'copa_sgq_var_question_18_v1',
   CHAMPION_RELEASE: 'copa_sgq_champion_release_v1',
   REMOTE_CONFIG: 'copa_sgq_remote_config_v1',
-  DAY19_QUESTIONS: 'copa_sgq_day19_questions_v1',
+  DAY19_QUESTIONS: 'copa_sgq_day19_questions_v2',
   DAY19_EVALUATIONS: 'copa_sgq_day19_evaluations_v1',
 };
 
@@ -27,13 +27,19 @@ export const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxqr
 export const DEFAULT_VAR_QUESTION_TEXT =
   'CENÁRIO DE DESEMPATE (VAR): Um processo essencial do seu setor depende de apenas um colaborador, que sairá de férias na próxima semana, enquanto um associado aguarda atendimento dentro do prazo previsto na Política da Qualidade. Descreva 3 ações práticas que você executaria hoje — incluindo o que registraria no SIG Sistem — para tratar esse risco, garantir a continuidade do processo e cumprir os Valores e a Política da Qualidade da ACIM.';
 
+export const DEFAULT_EVALUATION_CRITERIA: [string, string, string] = [
+  '1. Diagnóstico e Domínio dos Temas SGQ',
+  '2. Aplicação Prática na ACIM / SIG Sistem',
+  '3. Clareza e Visão Preventiva / Sistêmica',
+];
+
 export const DEFAULT_DAY19_SCENARIOS: GoldenKickScenario[] = [
   {
     id: 'FINAL-01',
-    title: 'Cenário 1 — Desorganização, Dados Perdidos & Ocorrência no SIG Sistem',
+    title: 'Cenário 1 — Versão Desatualizada na Copa & Conferência no SIG Sistem',
     themesCrossed: ['5S & Gestão da Informação', 'Não Conformidades', 'Atendimento', 'SIG Sistem'],
     context:
-      'Durante o atendimento a um associado, um colaborador percebe que documentos importantes ficaram espalhados na mesa sem arquivamento padrão, uma versão desatualizada de formulário foi utilizada e uma reclamação anterior do mesmo associado não havia sido registrada nem tratada no SIG Sistem.',
+      'Durante uma solicitação à copa, um colaborador observou que a versão utilizada está desatualizada e mesmo assim a utilizou, sem conferir no SIG Sistem. Isso acarretou na falta de informação para a copa, fazendo com que o tamanho da garrafa de café a ser servida fosse diferente do esperado, não atendendo as 50 pessoas da reunião.',
     customFields: [
       { id: 'diagnostico', label: '1. Diagnóstico e temas do SGQ violados', placeholder: 'Identifique os pontos críticos e os pilares do SGQ envolvidos...' },
       { id: 'contencao', label: '2. Contenção imediata no SIG Sistem / ACIM', placeholder: 'O que fazer imediatamente na rotina e dentro do SIG Sistem...' },
@@ -47,7 +53,7 @@ export const DEFAULT_DAY19_SCENARIOS: GoldenKickScenario[] = [
   },
   {
     id: 'FINAL-02',
-    title: 'Cenário 2 — Meta Abaixo do Esperado, Dependência de Pessoa & Propósito',
+    title: 'Cenário 2 — Indicador Abaixo da Meta, Dependência de Pessoa & Política',
     themesCrossed: ['Objetivos e Indicadores', 'Gestão de Riscos', 'Missão, Visão, Valores & Política', 'SIG Sistem'],
     context:
       'Um indicador estratégico do setor fechou 3 meses seguidos abaixo da meta. Ao investigar, a equipe descobriu que apenas uma pessoa sabia gerar os dados no SIG Sistem, saiu de férias sem deixar manual atualizado, e ninguém havia registrado esse risco ou revisado os compromissos da Política da Qualidade.',
@@ -67,7 +73,7 @@ export const DEFAULT_DAY19_SCENARIOS: GoldenKickScenario[] = [
     title: 'Cenário 3 — Mudança Sem Aviso Entre Setores & Dados Pessoais (LGPD)',
     themesCrossed: ['Visão Sistêmica & Melhoria Contínua', 'Atendimento', 'LGPD', 'SIG Sistem'],
     context:
-      'Um setor alterou o fluxo de encaminhamento de fichas cadastrais de associados no SIG Sistem sem avisar o departamento vizinho e passou a compartilhar uma planilha com CPF, telefone e e-mail em grupo aberto de mensagens para agilizar os retornos.',
+      'Para agilizar os retornos aos associados, um setor alterou o fluxo de encaminhamento no SIG Sistem sem alinhar com os departamentos vizinhos e passou a compartilhar uma planilha com CPF, telefone e e-mail dos participantes em grupo aberto de mensagens, gerando retrabalho no atendimento e exposição de dados pessoais.',
     customFields: [
       { id: 'diagnostico', label: '1. Diagnóstico e temas do SGQ violados', placeholder: 'Identifique os pontos críticos e os pilares do SGQ envolvidos...' },
       { id: 'contencao', label: '2. Contenção imediata no SIG Sistem / ACIM', placeholder: 'O que fazer imediatamente na rotina e dentro do SIG Sistem...' },
@@ -160,12 +166,21 @@ export const storageService = {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && Array.isArray(parsed.eliminatedEmails)) {
+          const criteria: [string, string, string] =
+            Array.isArray(parsed.evaluationCriteria) && parsed.evaluationCriteria.length === 3
+              ? [
+                  String(parsed.evaluationCriteria[0] || DEFAULT_EVALUATION_CRITERIA[0]),
+                  String(parsed.evaluationCriteria[1] || DEFAULT_EVALUATION_CRITERIA[1]),
+                  String(parsed.evaluationCriteria[2] || DEFAULT_EVALUATION_CRITERIA[2]),
+                ]
+              : DEFAULT_EVALUATION_CRITERIA;
           return {
             eliminatedEmails: parsed.eliminatedEmails.map((e: string) => String(e).trim().toLowerCase()),
             championEmail: String(parsed.championEmail || '').trim().toLowerCase(),
             championName: String(parsed.championName || '').trim(),
             isChampionReleased: Boolean(parsed.isChampionReleased),
             crownedAt: parsed.crownedAt ? String(parsed.crownedAt) : undefined,
+            evaluationCriteria: criteria,
           };
         }
       }
@@ -175,6 +190,7 @@ export const storageService = {
       championEmail: '',
       championName: '',
       isChampionReleased: false,
+      evaluationCriteria: DEFAULT_EVALUATION_CRITERIA,
     };
   },
 
@@ -242,10 +258,22 @@ export const storageService = {
     const idx = current.findIndex(
       (e) => e.email.toLowerCase() === cleanEmail && e.scenarioId === evalItem.scenarioId
     );
+    let computedStars = evalItem.stars;
+    if (Array.isArray(evalItem.criteriaStars) && evalItem.criteriaStars.length === 3) {
+      const rated = evalItem.criteriaStars.filter((v) => v > 0);
+      computedStars =
+        rated.length > 0
+          ? Math.round((rated.reduce((acc, v) => acc + v, 0) / rated.length) * 10) / 10
+          : 0;
+    } else {
+      computedStars = Math.max(0, Math.min(5, Math.round(evalItem.stars * 10) / 10));
+    }
+
     const updatedItem: GoldenKickEvaluation = {
       ...evalItem,
       email: cleanEmail,
-      stars: Math.max(1, Math.min(5, Math.round(evalItem.stars))),
+      dayDate: evalItem.dayDate || (evalItem.scenarioId === 'VAR-18' ? '2026-11-18' : '2026-11-19'),
+      stars: computedStars,
       updatedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
     };
     const next = [...current];

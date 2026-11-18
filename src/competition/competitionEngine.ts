@@ -241,10 +241,20 @@ export function getCompetitionTimeline(currentDate: string = getSaoPauloDateStri
   };
 }
 
+function parseResponseTimeSeconds(tempoResposta?: string | null): number | null {
+  if (!tempoResposta) return null;
+  const raw = tempoResposta.replace(',', '.').replace(/[^\d.]/g, '');
+  const parsed = raw ? parseFloat(raw) : Number.NaN;
+  if (Number.isNaN(parsed) || !Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 /**
  * Calcula a matriz de desempenho da competição (16/11 a 19/11).
- * IMPORTANTE: Nunca promove automaticamente ninguém a 'Campeão' — a revelação depende
- * exclusivamente do acionamento manual no Painel de Gestão.
+ * - Dia 16/11: elimina menor pontuação nas perguntas fechadas (se único).
+ * - Dia 17/11: elimina apenas o pior tempo geral da rodada cronometrada.
+ * - Dia 18/11: elimina menor pontuação nas perguntas fechadas (se único); empates passam para o dia 19/11.
+ * - Nunca promove automaticamente a 'Campeão' nem exibe 'Gestão' como motivo de eliminação.
  */
 export function calculateCompetitionMatrix(
   attempts: AttemptRecord[],
@@ -288,6 +298,34 @@ export function calculateCompetitionMatrix(
     const dayHasAttempts = attempts.some((a) => a.date === day.date);
     if (!dayHasAttempts || activeEmails.length <= 1) return;
 
+    // Dia 17/11: elimina exclusivamente pelo pior tempo geral da rodada
+    if (day.date === TIMED_KNOCKOUT_DATE) {
+      const timedEntries = activeEmails
+        .map((email) => {
+          const att = attempts.find(
+            (a) => a.email.toLowerCase() === email.toLowerCase() && a.date === TIMED_KNOCKOUT_DATE
+          );
+          return {
+            email,
+            secs: parseResponseTimeSeconds(att?.tempoResposta),
+          };
+        })
+        .filter((item): item is { email: string; secs: number } => item.secs !== null);
+
+      if (timedEntries.length >= 2) {
+        const maxSecs = Math.max(...timedEntries.map((t) => t.secs));
+        const slowestParticipants = timedEntries.filter((t) => t.secs === maxSecs);
+        if (slowestParticipants.length === 1) {
+          const eliminatedEmail = slowestParticipants[0].email;
+          matrix[eliminatedEmail].status = 'Eliminado';
+          matrix[eliminatedEmail].eliminatedDate = day.label;
+          activeEmails = activeEmails.filter((e) => e !== eliminatedEmail);
+        }
+      }
+      return;
+    }
+
+    // Dias 16/11 e 18/11: critério das perguntas fechadas (empates permanecem ativos e avançam)
     const scores = activeEmails.map((email) => {
       const score = matrix[email].dias[day.date];
       return {
@@ -314,7 +352,8 @@ export function calculateCompetitionMatrix(
     const clean = elimEmail.trim().toLowerCase();
     if (matrix[clean] && matrix[clean].status !== 'Eliminado') {
       matrix[clean].status = 'Eliminado';
-      matrix[clean].eliminatedDate = matrix[clean].eliminatedDate || 'Gestão';
+      // Nunca exibe "Gestão" como origem da eliminação
+      matrix[clean].eliminatedDate = matrix[clean].eliminatedDate || undefined;
       activeEmails = activeEmails.filter((e) => e.toLowerCase() !== clean);
     }
   });
@@ -409,22 +448,14 @@ export function canParticipantPlayToday(
     };
   }
 
-  if (isEliminatedParticipant(cleanEmail, options?.remoteConfig)) {
-    return {
-      allowed: false,
-      isEliminated: true,
-      eliminatedDate: 'Mata-Mata',
-      reason: 'Você foi eliminado do mata-mata, mas mantenha-se conectado para ver quem será o grande campeão no Momento ACIM!',
-    };
-  }
-
   const matrix = calculateCompetitionMatrix(attempts, options?.remoteConfig);
   const participantRow = matrix.find((r) => r.email.toLowerCase() === cleanEmail);
-  if (participantRow && participantRow.status === 'Eliminado') {
+
+  if (isEliminatedParticipant(cleanEmail, options?.remoteConfig) || participantRow?.status === 'Eliminado') {
     return {
       allowed: false,
       isEliminated: true,
-      eliminatedDate: participantRow.eliminatedDate || 'dias anteriores',
+      eliminatedDate: participantRow?.eliminatedDate,
       reason: 'Você foi eliminado do mata-mata, mas mantenha-se conectado para ver quem será o grande campeão no Momento ACIM!',
     };
   }
