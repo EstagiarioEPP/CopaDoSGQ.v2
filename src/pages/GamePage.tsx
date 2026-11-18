@@ -8,8 +8,10 @@ import {
   GamePhase,
   TestModeConfig,
   GoldenKickAnswer,
+  GoldenKickScenario,
 } from '../types';
 import { storageService } from '../services/storageService';
+import { sheetsSyncService } from '../services/sheetsSyncService';
 import { StadiumField } from '../components/StadiumField';
 import { ScoreBoard } from '../components/ScoreBoard';
 import { StartScreen } from '../components/StartScreen';
@@ -21,7 +23,7 @@ import { GoldenKickArena } from '../components/GoldenKickArena';
 import { ChampionScreen } from '../components/ChampionScreen';
 import { PostCompetitionMysteryScreen } from '../components/PostCompetitionMysteryScreen';
 import { sounds } from '../sound';
-import { Volume2, VolumeX, ShieldAlert, ArrowLeft, FlaskConical } from 'lucide-react';
+import { Volume2, VolumeX, ShieldAlert, ArrowLeft, FlaskConical, RefreshCw } from 'lucide-react';
 
 import {
   getSaoPauloDateString,
@@ -29,7 +31,6 @@ import {
   isTimedKnockoutDay,
   isVarReviewDay,
   isGoldenKickDay,
-  GOLDEN_KICK_SCENARIOS,
   getEffectiveChampionConfig,
   getCompetitionTimeline,
 } from '../competition/competitionEngine';
@@ -59,12 +60,42 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
   const [webhookUrl, setWebhookUrl] = useState<string>(() => storageService.getWebhookUrl());
   const [varQuestionText, setVarQuestionText] = useState<string>(() => storageService.getVarQuestion());
   const [effectiveChampion, setEffectiveChampion] = useState(() => getEffectiveChampionConfig());
+  const [day19Scenarios, setDay19Scenarios] = useState<GoldenKickScenario[]>(() =>
+    storageService.getDay19Questions()
+  );
+  const [loadingDay19, setLoadingDay19] = useState(false);
 
   // Atualiza perguntas ao alterar data simulada no Modo Teste ou alterações no storage
   useEffect(() => {
     const daily = getQuestionsForDate(today);
     setQuestions(daily.length > 0 ? daily : storageService.getActiveQuestions());
   }, [today]);
+
+  // Busca perguntas dinâmicas do Dia 19 e configuração remota no Apps Script
+  useEffect(() => {
+    let cancelled = false;
+    const loadRemote = async () => {
+      if (isGoldenRound) setLoadingDay19(true);
+      try {
+        const [q19Res, cfg] = await Promise.all([
+          sheetsSyncService.fetchQuestions19(webhookUrl),
+          sheetsSyncService.fetchRemoteConfig(webhookUrl),
+        ]);
+        if (!cancelled) {
+          if (q19Res.scenarios.length > 0) {
+            setDay19Scenarios(q19Res.scenarios);
+          }
+          setEffectiveChampion(getEffectiveChampionConfig(cfg));
+        }
+      } finally {
+        if (!cancelled) setLoadingDay19(false);
+      }
+    };
+    loadRemote();
+    return () => {
+      cancelled = true;
+    };
+  }, [webhookUrl, isGoldenRound]);
 
   // Listen to storage changes so if admin updates, player receives it
   useEffect(() => {
@@ -74,6 +105,7 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
       setTheme(storageService.getTheme());
       setWebhookUrl(storageService.getWebhookUrl());
       setVarQuestionText(storageService.getVarQuestion());
+      setDay19Scenarios(storageService.getDay19Questions());
       setEffectiveChampion(getEffectiveChampionConfig());
     });
   }, [today]);
@@ -97,6 +129,7 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
   const [goldenKickAnswers, setGoldenKickAnswers] = useState<GoldenKickAnswer[]>([]);
   const [goldenKickSilentTenths, setGoldenKickSilentTenths] = useState<number>(0);
   const [showChampionPublic, setShowChampionPublic] = useState<boolean>(false);
+  const [dismissMysteryForLogin, setDismissMysteryForLogin] = useState<boolean>(false);
 
   // Retomada automática de tentativa em andamento no mesmo dia (apenas modo oficial e rodadas de múltipla escolha)
   useEffect(() => {
@@ -280,10 +313,15 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
 
   const showingChampion =
     isPreviewChampion ||
-    (effectiveChampion.isReleased && (showChampionPublic || (!isTestMode && timeline.isEnded)));
+    (effectiveChampion.isReleased && showChampionPublic);
   const showingMystery =
     !showingChampion &&
-    (isPreviewMystery || (!isTestMode && timeline.isEnded && !effectiveChampion.isReleased));
+    (isPreviewMystery ||
+      (!isTestMode &&
+        timeline.isEnded &&
+        !effectiveChampion.isReleased &&
+        phase === 'START' &&
+        !dismissMysteryForLogin));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-amber-400 selection:text-slate-950 font-sans">
@@ -354,9 +392,7 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
             onExit={
               isPreviewChampion
                 ? onExitTestMode
-                : !timeline.isEnded
-                ? () => setShowChampionPublic(false)
-                : undefined
+                : () => setShowChampionPublic(false)
             }
             exitLabel={isPreviewChampion ? 'Voltar ao Painel' : 'Voltar ao Início'}
           />
@@ -364,6 +400,7 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
           <PostCompetitionMysteryScreen
             onExitPreview={isPreviewMystery ? onExitTestMode : undefined}
             exitLabel="Voltar ao Painel"
+            onCheckEmail={!isPreviewMystery ? () => setDismissMysteryForLogin(true) : undefined}
           />
         ) : questions.length === 0 && !isGoldenRound ? (
           <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center max-w-md">
@@ -385,8 +422,12 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
                   setEliminatedInfo(info);
                   setPhase('ELIMINATED');
                 }}
+                onChampionLogin={() => {
+                  setEffectiveChampion(getEffectiveChampionConfig());
+                  setShowChampionPublic(true);
+                }}
                 onOpenChampionScreen={() => setShowChampionPublic(true)}
-                totalQuestions={isGoldenRound ? GOLDEN_KICK_SCENARIOS.length : questions.length}
+                totalQuestions={isGoldenRound ? day19Scenarios.length : questions.length}
                 testMode={testMode}
               />
             )}
@@ -451,25 +492,33 @@ export const GamePage: React.FC<GamePageProps> = ({ testMode, onExitTestMode }) 
             )}
 
             {phase === 'GOLDEN_KICK' && (
-              <GoldenKickArena
-                scenarios={GOLDEN_KICK_SCENARIOS}
-                playerName={playerInfo.name}
-                theme={theme}
-                onComplete={(answers, totalSilentTenths) => {
-                  setGoldenKickAnswers(answers);
-                  setGoldenKickSilentTenths(totalSilentTenths);
-                  if (!isTestMode) {
-                    storageService.clearInProgressAttempt();
-                  }
-                  setPhase('GAME_OVER');
-                }}
-              />
+              loadingDay19 ? (
+                <div className="bg-slate-900 border border-amber-400/40 p-8 rounded-2xl text-center max-w-md space-y-3">
+                  <RefreshCw className="w-8 h-8 text-amber-400 animate-spin mx-auto" />
+                  <h2 className="text-sm font-bold text-white">Carregando cenários da Grande Final...</h2>
+                  <p className="text-xs text-slate-400">Buscando as questões oficiais configuradas pela gestão.</p>
+                </div>
+              ) : (
+                <GoldenKickArena
+                  scenarios={day19Scenarios}
+                  playerName={playerInfo.name}
+                  theme={theme}
+                  onComplete={(answers, totalSilentTenths) => {
+                    setGoldenKickAnswers(answers);
+                    setGoldenKickSilentTenths(totalSilentTenths);
+                    if (!isTestMode) {
+                      storageService.clearInProgressAttempt();
+                    }
+                    setPhase('GAME_OVER');
+                  }}
+                />
+              )
             )}
 
             {phase === 'GAME_OVER' && (
               <EndScreen
                 score={score}
-                totalQuestions={isGoldenRound ? GOLDEN_KICK_SCENARIOS.length : questions.length}
+                totalQuestions={isGoldenRound ? day19Scenarios.length : questions.length}
                 records={records}
                 playerInfo={playerInfo}
                 theme={theme}

@@ -28,12 +28,13 @@ export interface AttemptRecord {
   totalQuestions: number;
   date: string; // Formato YYYY-MM-DD (ex: 2026-11-16)
   timestamp: string;
-  dayIndex?: number; // 1 a 5
+  dayIndex?: number; // 1 a 4
   tempoResposta?: string; // Tempo total da rodada em décimos de segundo (ex: "18.4s")
   temposPorPergunta?: number[]; // Tempos individuais por pergunta em décimos (ex: [4.2, 3.8, ...])
   answersSummary?: string; // Detalhes dos chutes retornados da planilha oficial
   varResponse?: string; // Coluna 10: Resposta aberta do VAR (18/11)
-  goldenKickSummary?: string; // Coluna 11: Respostas dos 3 cenários da Final (19/11)
+  goldenKickSummary?: string; // Coluna 11: Respostas dos cenários da Final (19/11)
+  goldenKickAnswers?: GoldenKickAnswer[]; // Coluna 12: Respostas estruturadas da Final (19/11)
   isPendingManualReview?: boolean; // True para cobranças da Final avaliadas manualmente pela banca
   source?: 'sheet' | 'local';
 }
@@ -46,25 +47,54 @@ export interface TestModeConfig {
   previewMystery?: boolean;
 }
 
+export interface GoldenKickField {
+  id: string;
+  label: string;
+  placeholder?: string;
+}
+
 export interface GoldenKickScenario {
   id: string;
   title: string;
   themesCrossed: string[];
   context: string;
-  fields: {
+  customFields?: GoldenKickField[];
+  fields?: {
     diagnosticoLabel: string;
     contencaoLabel: string;
     acaoPreventivaLabel: string;
   };
 }
 
+export interface GoldenKickFieldResponse {
+  fieldId: string;
+  label: string;
+  value: string;
+}
+
 export interface GoldenKickAnswer {
   scenarioId: string;
   scenarioTitle: string;
-  diagnostico: string;
-  contencao: string;
-  acaoPreventiva: string;
+  diagnostico?: string;
+  contencao?: string;
+  acaoPreventiva?: string;
+  fieldResponses?: GoldenKickFieldResponse[];
   elapsedTenths: number;
+}
+
+export interface RemoteCompetitionConfig {
+  eliminatedEmails: string[];
+  championEmail: string;
+  championName: string;
+  isChampionReleased: boolean;
+  crownedAt?: string;
+}
+
+export interface GoldenKickEvaluation {
+  email: string;
+  scenarioId: string;
+  stars: number; // 1 a 5
+  updatedAt?: string;
 }
 
 export interface ChampionConfig {

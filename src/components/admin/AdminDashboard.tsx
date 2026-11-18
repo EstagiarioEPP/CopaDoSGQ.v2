@@ -1,10 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Question, GameTheme, Corner, AttemptRecord, TestModeConfig } from '../../types';
+import {
+  Question,
+  GameTheme,
+  Corner,
+  AttemptRecord,
+  TestModeConfig,
+  GoldenKickScenario,
+  GoldenKickEvaluation,
+  RemoteCompetitionConfig,
+} from '../../types';
 import { PRESET_THEMES, DEFAULT_QUESTIONS } from '../../defaultQuestions';
 import { storageService, DEFAULT_VAR_QUESTION_TEXT } from '../../services/storageService';
 import { sheetsSyncService, SyncStatus, OFFICIAL_SPREADSHEET_ID } from '../../services/sheetsSyncService';
 import { generateStandaloneHtml } from '../../exportStandaloneHtml';
 import { sounds } from '../../sound';
+import { Day19EditorSection } from './Day19EditorSection';
+import { Day19EvaluationTab } from './Day19EvaluationTab';
+import appsScriptCode from '../../../backend-apps-script/Code.gs?raw';
 import {
   ArrowLeft,
   Trash2,
@@ -35,6 +47,9 @@ import {
   Lock,
   Unlock,
   EyeOff,
+  Star,
+  UserX,
+  UserCheck,
 } from 'lucide-react';
 import {
   calculateCompetitionMatrix,
@@ -45,7 +60,6 @@ import {
   isTimedKnockoutDay,
   isVarReviewDay,
   isGoldenKickDay,
-  GOLDEN_KICK_SCENARIOS,
   getEffectiveChampionConfig,
   getSuggestedChampionCandidates,
 } from '../../competition/competitionEngine';
@@ -54,7 +68,7 @@ const DAY_TOPIC_TITLES: Record<number, string> = {
   1: '5S e Gestão da Informação / Não Conformidades',
   2: 'Não Conformidades / Objetivos e Indicadores / Gestão de Riscos (Cronometrado)',
   3: 'Gestão de Riscos / Missão, Visão, Valores e Política + VAR Desempate',
-  4: 'Grande Final — Chute de Ouro (3 Cenários Práticos ACIM & SIG Sistem)',
+  4: 'Grande Final — Chute de Ouro (Cenários Práticos ACIM & SIG Sistem)',
 };
 
 interface AdminDashboardProps {
@@ -71,6 +85,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [theme, setTheme] = useState<GameTheme>(() => storageService.getTheme());
   const [webhookUrl, setWebhookUrl] = useState<string>(() => storageService.getWebhookUrl());
   const [attempts, setAttempts] = useState<AttemptRecord[]>(() => storageService.getAttempts());
+  const [day19Scenarios, setDay19Scenarios] = useState<GoldenKickScenario[]>(() =>
+    storageService.getDay19Questions()
+  );
+  const [day19Evaluations, setDay19Evaluations] = useState<GoldenKickEvaluation[]>(() =>
+    storageService.getDay19Evaluations()
+  );
+  const [remoteConfig, setRemoteConfig] = useState<RemoteCompetitionConfig>(() =>
+    storageService.getRemoteConfig()
+  );
+  const [eliminatingEmail, setEliminatingEmail] = useState<string | null>(null);
+  const [confirmEliminateEmail, setConfirmEliminateEmail] = useState<string | null>(null);
 
   // Sincronização real com a planilha Google Sheets
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
@@ -86,7 +111,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [testDate, setTestDate] = useState<string>(defaultTestDate);
 
   // UI state
-  const [activeTab, setActiveTab] = useState<'questions' | 'theme' | 'sheets' | 'export' | 'players'>('questions');
+  const [activeTab, setActiveTab] = useState<
+    'questions' | 'theme' | 'sheets' | 'export' | 'players' | 'evaluation'
+  >('questions');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [jsonText, setJsonText] = useState('');
@@ -104,10 +131,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleSyncSheets = useCallback(async () => {
     setSyncStatus('loading');
-    const result = await sheetsSyncService.fetchAllAttempts(webhookUrl);
+    const [result, cfg, q19, evals] = await Promise.all([
+      sheetsSyncService.fetchAllAttempts(webhookUrl),
+      sheetsSyncService.fetchRemoteConfig(webhookUrl),
+      sheetsSyncService.fetchQuestions19(webhookUrl),
+      sheetsSyncService.fetchEvaluations19(webhookUrl),
+    ]);
     setAttempts(result.attempts);
     setSyncStatus(result.status);
     setSyncMessage(result.message);
+    setRemoteConfig(cfg);
+    setChampionRelease(getEffectiveChampionConfig(cfg));
+    if (q19.scenarios.length > 0) {
+      setDay19Scenarios(q19.scenarios);
+    }
+    setDay19Evaluations(evals);
     setLastSyncedAt(
       new Date().toLocaleTimeString('pt-BR', {
         timeZone: 'America/Sao_Paulo',
@@ -130,10 +168,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setTheme(storageService.getTheme());
       setWebhookUrl(storageService.getWebhookUrl());
       setVarQuestionDraft(storageService.getVarQuestion());
-      setChampionRelease(getEffectiveChampionConfig());
-      handleSyncSheets();
+      const latestCfg = storageService.getRemoteConfig();
+      setRemoteConfig(latestCfg);
+      setChampionRelease(getEffectiveChampionConfig(latestCfg));
+      setDay19Scenarios(storageService.getDay19Questions());
+      setDay19Evaluations(storageService.getDay19Evaluations());
     });
-  }, [handleSyncSheets]);
+  }, []);
 
   const cornerNames: Record<Corner, string> = {
     A: 'A (Sup. Esquerdo)',
@@ -368,230 +409,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const standaloneHtml = generateStandaloneHtml(questions, theme, webhookUrl);
 
-  const appsScriptCode = `/**
- * =========================================================================
- * GOOGLE APPS SCRIPT — COPA DO SGQ ACIM (NOVEMBRO 2026)
- * =========================================================================
- * Funcionalidades:
- * 1. Restrição estrita aos 4 participantes oficiais (conta de teste removida).
- * 2. Validação oficial de pontuação no servidor (gabarito seguro para rodadas de múltipla escolha).
- * 3. Bloqueio de horário oficial (08:00 às 18:00 - America/Sao_Paulo).
- * 4. Bloqueio rigoroso de duplicidade por [e-mail + data normalizada].
- * 5. Preservação total de colunas 1-9 e adição das Colunas 10 (VAR 18/11) e 11 (Final Chute de Ouro 19/11).
- * 6. Leitura completa via doGet(e) para o Painel Administrativo e Ranking 17/11.
- */
-var SPREADSHEET_ID = "${OFFICIAL_SPREADSHEET_ID}";
-
-var GABARITO_OFICIAL = {
-  // 16/11/2026
-  "Q01": "B", "Q02": "C", "Q03": "C", "Q04": "B", "Q05": "A",
-  // 17/11/2026
-  "Q06": "C", "Q07": "B", "Q08": "C", "Q09": "C", "Q10": "B",
-  // 18/11/2026
-  "Q11": "B", "Q12": "B", "Q13": "B", "Q14": "A", "Q15": "B",
-  // 19/11/2026
-  "Q16": "B", "Q17": "B", "Q18": "B", "Q19": "C", "Q20": "B",
-  // 20/11/2026
-  "Q21": "C", "Q22": "A", "Q23": "B", "Q24": "C", "Q25": "C"
-};
-
-// ÚNICOS 4 PARTICIPANTES OFICIAIS (CONTA DE TESTE REMOVIDA)
-var PARTICIPANTES_AUTORIZADOS = [
-  "consultor12@acim.com.br",
-  "escoladenegocios2@acim.com.br",
-  "escoladenegocios6@acim.com.br",
-  "supervisorcomercial@acim.com.br"
-];
-
-function getTargetSheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  return ss.getActiveSheet();
-}
-
-function normalizeSheetDate(val) {
-  if (!val) return "";
-  if (val instanceof Date) return Utilities.formatDate(val, "America/Sao_Paulo", "yyyy-MM-dd");
-  var str = val.toString().trim();
-  var isoMatch = str.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
-  if (isoMatch) return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3];
-  var brMatch = str.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})/);
-  if (brMatch) return brMatch[3] + "-" + brMatch[2] + "-" + brMatch[1];
-  return str;
-}
-
-function normalizeSheetTimestamp(val) {
-  if (!val) return "";
-  if (val instanceof Date) return Utilities.formatDate(val, "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
-  return val.toString().trim();
-}
-
-function ensureHeaders(sheet) {
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow([
-      "Data e Hora",
-      "Nome",
-      "E-mail",
-      "Data da Rodada",
-      "Gols (Acertos)",
-      "Total",
-      "Aproveitamento",
-      "Detalhes dos Chutes",
-      "Tempo de Resposta",
-      "VAR - Exemplo Prático",
-      "Final - Chute de Ouro"
-    ]);
-    sheet.getRange(1, 1, 1, 11).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
-    return;
-  }
-  var extraHeaders = [
-    { col: 9, title: "Tempo de Resposta" },
-    { col: 10, title: "VAR - Exemplo Prático" },
-    { col: 11, title: "Final - Chute de Ouro" }
-  ];
-  for (var h = 0; h < extraHeaders.length; h++) {
-    var cell = sheet.getRange(1, extraHeaders[h].col);
-    if (!cell.getValue()) {
-      cell.setValue(extraHeaders[h].title).setFontWeight("bold").setBackground("#065f46").setFontColor("#ffffff");
-    }
-  }
-}
-
-function doPost(e) {
-  var lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(15000);
-    var sheet = getTargetSheet();
-    ensureHeaders(sheet);
-
-    var data = {};
-    if (e && e.postData && e.postData.contents) {
-      try { data = JSON.parse(e.postData.contents); } catch (err) { data = e.parameter || {}; }
-    } else if (e && e.parameter) {
-      data = e.parameter;
-    }
-
-    var email = (data.email || "").toString().trim().toLowerCase();
-    var nome = (data.nome || data.name || "Jogador").toString().trim();
-    var rodadaData = normalizeSheetDate(data.date || data.data || "");
-    if (!rodadaData) rodadaData = Utilities.formatDate(new Date(), "America/Sao_Paulo", "yyyy-MM-dd");
-
-    var isAuthorized = PARTICIPANTES_AUTORIZADOS.some(function(p) { return p.toLowerCase() === email; });
-    var isAdminTest = email.indexOf("admin") !== -1 || email.indexOf("teste") !== -1;
-    if (!isAuthorized && !isAdminTest) {
-      return ContentService.createTextOutput(JSON.stringify({ success: false, error: "E-mail não autorizado." })).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    var now = new Date();
-    var spHour = Number(Utilities.formatDate(now, "America/Sao_Paulo", "H"));
-    var spMinute = Number(Utilities.formatDate(now, "America/Sao_Paulo", "m"));
-    var totalMinutes = spHour * 60 + spMinute;
-    if (!isAdminTest && (totalMinutes < (8 * 60 - 5) || totalMinutes > (18 * 60 + 10))) {
-      return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Fora do horário oficial (08:00 às 18:00)." })).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    var numRows = sheet.getLastRow();
-    if (numRows > 1 && !isAdminTest) {
-      var rangeValues = sheet.getRange(2, 1, numRows - 1, Math.max(sheet.getLastColumn(), 4)).getValues();
-      for (var i = 0; i < rangeValues.length; i++) {
-        var rowEmail = (rangeValues[i][2] || "").toString().trim().toLowerCase();
-        var rowDate = normalizeSheetDate(rangeValues[i][3]);
-        if (rowEmail === email && rowDate === rodadaData) {
-          return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Tentativa já registrada para hoje." })).setMimeType(ContentService.MimeType.JSON);
-        }
-      }
-    }
-
-    var isGoldenKick = Boolean(data.isGoldenKick) || rodadaData === "2026-11-19";
-    var totalQuestions = 5;
-    var officialScore = 0;
-    var percentage = "0%";
-    var answersSummary = data.answers || "";
-
-    if (isGoldenKick) {
-      officialScore = "Em análise";
-      totalQuestions = Number(data.totalQuestions || 3);
-      percentage = "Banca SGQ";
-      answersSummary = data.answers || "Grande Final — 3 Cenários (Avaliação Manual)";
-    } else if (Array.isArray(data.records) && data.records.length > 0) {
-      officialScore = 0;
-      totalQuestions = data.records.length;
-      var detailList = [];
-      for (var q = 0; q < data.records.length; q++) {
-        var rec = data.records[q];
-        var qId = (rec.questionId || "").toString().toUpperCase();
-        var choice = (rec.userChoice || "").toString().toUpperCase();
-        var correctChoice = GABARITO_OFICIAL[qId];
-        var isHit = correctChoice && (choice === correctChoice);
-        if (isHit) officialScore++;
-        detailList.push(qId + ": [" + choice + "] " + (isHit ? "Gol" : "Defesa"));
-      }
-      answersSummary = detailList.join(" | ");
-      percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
-    } else if (data.score !== undefined && data.score !== null) {
-      officialScore = Number(data.score);
-      totalQuestions = Number(data.totalQuestions || 5);
-      percentage = Math.round((officialScore / totalQuestions) * 100) + "%";
-    }
-
-    var timestampStr = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
-    var tempoResposta = (data.tempoResposta !== undefined && data.tempoResposta !== null && data.tempoResposta !== "") ? data.tempoResposta.toString() : "-";
-    var varResponse = (data.varResponse !== undefined && data.varResponse !== null && data.varResponse !== "") ? data.varResponse.toString() : "-";
-    var goldenKickSummary = (data.goldenKickSummary !== undefined && data.goldenKickSummary !== null && data.goldenKickSummary !== "") ? data.goldenKickSummary.toString() : "-";
-
-    sheet.appendRow([timestampStr, nome, email, rodadaData, officialScore, totalQuestions, percentage, answersSummary, tempoResposta, varResponse, goldenKickSummary]);
-    return ContentService.createTextOutput(JSON.stringify({ success: true, score: officialScore, total: totalQuestions, percentage: percentage, tempoResposta: tempoResposta })).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function doGet(e) {
-  try {
-    var sheet = getTargetSheet();
-    var numRows = sheet.getLastRow();
-    var numCols = Math.max(sheet.getLastColumn(), 11);
-    var attempts = [];
-    if (numRows > 1) {
-      var values = sheet.getRange(2, 1, numRows - 1, numCols).getValues();
-      for (var i = 0; i < values.length; i++) {
-        var row = values[i];
-        var rowEmail = (row[2] || "").toString().trim().toLowerCase();
-        if (!rowEmail || rowEmail.indexOf("@") === -1) continue;
-        var rowDate = normalizeSheetDate(row[3]);
-        var rawScore = row[4];
-        var isPending = rowDate === "2026-11-19" || (rawScore && rawScore.toString().toLowerCase().indexOf("análise") !== -1);
-        attempts.push({
-          timestamp: normalizeSheetTimestamp(row[0]),
-          name: (row[1] || "Jogador").toString().trim(),
-          email: rowEmail,
-          date: rowDate,
-          score: isPending ? 0 : Number(rawScore || 0),
-          totalQuestions: Number(row[5] || 5) || 5,
-          percentage: (row[6] || "").toString().trim(),
-          answers: (row[7] || "").toString().trim(),
-          tempoResposta: (row[8] !== undefined && row[8] !== null) ? row[8].toString().trim() : "-",
-          varResponse: (row[9] !== undefined && row[9] !== null) ? row[9].toString().trim() : "-",
-          goldenKickSummary: (row[10] !== undefined && row[10] !== null) ? row[10].toString().trim() : "-",
-          isPendingManualReview: isPending
-        });
-      }
-    }
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "online",
-      competicao: "Copa do SGQ ACIM 2026",
-      periodo: "16/11/2026 a 19/11/2026",
-      participantes: PARTICIPANTES_AUTORIZADOS.length,
-      totalRegistros: attempts.length,
-      attempts: attempts
-    })).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", error: err.toString(), attempts: [] })).setMimeType(ContentService.MimeType.JSON);
-  }
-}`;
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Top Bar da Área Administrativa */}
@@ -732,6 +549,18 @@ function doGet(e) {
           >
             <Users className="w-3.5 h-3.5" />
             <span>Tentativas & Apuração ({attempts.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('evaluation')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'evaluation'
+                ? 'bg-amber-400 text-slate-950 shadow'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Star className="w-3.5 h-3.5" />
+            <span>Avaliação Final (19/11)</span>
           </button>
         </div>
       </div>
@@ -880,27 +709,13 @@ function doGet(e) {
                       </div>
                     )}
 
-                    {/* Resumo dos 3 Cenários do Chute de Ouro (Dia 19/11) */}
+                    {/* Editor Dinâmico dos Cenários e Campos do Chute de Ouro (Dia 19/11) */}
                     {isFinalDay && (
-                      <div className="p-4 sm:p-5 rounded-xl border-2 border-amber-500/40 bg-amber-950/15 space-y-3">
-                        <div className="flex items-center gap-2 text-amber-300 font-bold text-xs sm:text-sm">
-                          <Trophy className="w-4 h-4 shrink-0" />
-                          <span>Modo Grande Final (19/11): Chute de Ouro — 3 Cenários Abertos</span>
-                        </div>
-                        <p className="text-xs text-slate-300 leading-relaxed">
-                          Na data 19/11/2026 os finalistas respondem 1 cenário por vez com 3 campos (Diagnóstico, Contenção no SIG Sistem/ACIM e Ação Preventiva), enviados diretamente para avaliação da banca na Coluna 11 da planilha.
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                          {GOLDEN_KICK_SCENARIOS.map((sc) => (
-                            <div key={sc.id} className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 space-y-1">
-                              <span className="text-[11px] font-bold text-amber-300 block">{sc.title}</span>
-                              <span className="text-[10px] font-mono text-slate-400 block">
-                                {sc.themesCrossed.join(' · ')}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      <Day19EditorSection
+                        webhookUrl={webhookUrl}
+                        scenarios={day19Scenarios}
+                        onScenariosChange={setDay19Scenarios}
+                      />
                     )}
 
                     {/* Lista das 5 perguntas deste dia */}
@@ -1197,8 +1012,8 @@ function doGet(e) {
 
         {/* ABA 5: TENTATIVAS & COMPETIÇÃO */}
         {activeTab === 'players' && (() => {
-          const matrix = calculateCompetitionMatrix(attempts);
-          const candidateInfo = getSuggestedChampionCandidates(attempts);
+          const matrix = calculateCompetitionMatrix(attempts, remoteConfig);
+          const candidateInfo = getSuggestedChampionCandidates(attempts, remoteConfig);
           const fallbackEmail =
             candidateInfo.autoWinner?.email ||
             candidateInfo.tiedCandidates[0]?.email ||
@@ -1403,17 +1218,18 @@ function doGet(e) {
                     <button
                       type="button"
                       disabled={!chosenRow}
-                      onClick={() => {
+                      onClick={async () => {
                         if (!chosenRow) return;
                         sounds.playChampionFanfare();
-                        storageService.saveChampionRelease({
-                          isReleased: true,
-                          championName: chosenRow.name,
-                          championEmail: chosenRow.email,
-                          championTitle: 'GRANDE CAMPEÃO DA COPA DO SGQ ACIM 2026',
-                        });
+                        const nextCfg = await sheetsSyncService.crownChampion(
+                          webhookUrl,
+                          chosenRow.email,
+                          chosenRow.name
+                        );
+                        setRemoteConfig(nextCfg);
+                        setChampionRelease(getEffectiveChampionConfig(nextCfg));
                       }}
-                      className="px-4 py-2.5 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-bold text-xs rounded-xl shadow cursor-pointer flex items-center gap-2"
+                      className="px-4 py-2.5 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-bold text-xs rounded-xl shadow cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0"
                     >
                       <Unlock className="w-4 h-4" />
                       <span>Liberar e Anunciar Grande Campeão</span>
@@ -1422,11 +1238,13 @@ function doGet(e) {
                     {championRelease.isReleased && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           sounds.playBlip();
-                          storageService.clearChampionRelease();
+                          const nextCfg = await sheetsSyncService.uncrownChampion(webhookUrl);
+                          setRemoteConfig(nextCfg);
+                          setChampionRelease(getEffectiveChampionConfig(nextCfg));
                         }}
-                        className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-xl cursor-pointer flex items-center gap-1.5"
+                        className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-xl cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0"
                       >
                         <EyeOff className="w-3.5 h-3.5" />
                         <span>Ocultar Novamente</span>
@@ -1523,12 +1341,18 @@ function doGet(e) {
                           <th className="px-3 py-3 text-center">19/11</th>
                           <th className="px-3 py-3 text-center font-bold text-white">Total</th>
                           <th className="px-4 py-3 text-right">Situação</th>
+                          <th className="px-4 py-3 text-right">Ações</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60 font-mono">
                         {matrix.map((row, idx) => {
                           const isEliminated = row.status === 'Eliminado';
                           const isChampion = row.status === 'Campeão';
+                          const isManualEliminated = remoteConfig.eliminatedEmails.some(
+                            (e) => e.toLowerCase() === row.email.toLowerCase()
+                          );
+                          const isUpdatingPlayer =
+                            eliminatingEmail?.toLowerCase() === row.email.toLowerCase();
 
                           return (
                             <tr
@@ -1537,7 +1361,7 @@ function doGet(e) {
                                 isChampion
                                   ? 'bg-amber-950/20 hover:bg-amber-950/30'
                                   : isEliminated
-                                  ? 'bg-rose-950/10 hover:bg-rose-950/20 opacity-70'
+                                  ? 'bg-rose-950/10 hover:bg-rose-950/20 opacity-80'
                                   : 'hover:bg-slate-900/40'
                               }`}
                             >
@@ -1547,17 +1371,17 @@ function doGet(e) {
                               </td>
 
                               {/* 16/11 */}
-                              <td className="px-3 py-3 text-center">
+                              <td className="px-3 py-3 text-center tabular-nums">
                                 {row.dias['2026-11-16'] !== null ? `${row.dias['2026-11-16']}/5` : '—'}
                               </td>
 
                               {/* 17/11 */}
-                              <td className="px-3 py-3 text-center">
+                              <td className="px-3 py-3 text-center tabular-nums">
                                 {row.dias['2026-11-17'] !== null ? `${row.dias['2026-11-17']}/5` : '—'}
                               </td>
 
                               {/* 18/11 */}
-                              <td className="px-3 py-3 text-center">
+                              <td className="px-3 py-3 text-center tabular-nums">
                                 {row.dias['2026-11-18'] !== null ? `${row.dias['2026-11-18']}/5` : '—'}
                               </td>
 
@@ -1579,27 +1403,100 @@ function doGet(e) {
                               </td>
 
                               {/* Total Acumulado */}
-                              <td className="px-3 py-3 text-center font-bold text-white text-sm">
+                              <td className="px-3 py-3 text-center font-bold text-white text-sm tabular-nums">
                                 {row.total}
                               </td>
 
                               {/* Situação */}
                               <td className="px-4 py-3 text-right font-sans">
                                 {isChampion && (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40 whitespace-nowrap">
                                     <Trophy className="w-3 h-3 text-amber-400" />
                                     <span>Campeão</span>
                                   </span>
                                 )}
                                 {isEliminated && (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                                    <span>Eliminado ({row.eliminatedDate || 'Rodada'})</span>
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 whitespace-nowrap">
+                                    <span>Eliminado ({row.eliminatedDate || 'Gestão'})</span>
                                   </span>
                                 )}
                                 {!isChampion && !isEliminated && (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
                                     <span>Ativo</span>
                                   </span>
+                                )}
+                              </td>
+
+                              {/* Ação de Eliminação Dinâmica (Planilha Config) */}
+                              <td className="px-4 py-3 text-right font-sans">
+                                {isManualEliminated ? (
+                                  <button
+                                    type="button"
+                                    disabled={isUpdatingPlayer}
+                                    onClick={async () => {
+                                      sounds.playBlip();
+                                      setEliminatingEmail(row.email);
+                                      try {
+                                        const nextCfg = await sheetsSyncService.restorePlayer(
+                                          webhookUrl,
+                                          row.email
+                                        );
+                                        setRemoteConfig(nextCfg);
+                                      } finally {
+                                        setEliminatingEmail(null);
+                                      }
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
+                                  >
+                                    <UserCheck className="w-3.5 h-3.5" />
+                                    <span>{isUpdatingPlayer ? 'Salvando...' : 'Reativar'}</span>
+                                  </button>
+                                ) : confirmEliminateEmail === row.email ? (
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      disabled={isUpdatingPlayer}
+                                      onClick={async () => {
+                                        sounds.playBuzzer();
+                                        setConfirmEliminateEmail(null);
+                                        setEliminatingEmail(row.email);
+                                        try {
+                                          const nextCfg = await sheetsSyncService.eliminatePlayer(
+                                            webhookUrl,
+                                            row.email
+                                          );
+                                          setRemoteConfig(nextCfg);
+                                        } finally {
+                                          setEliminatingEmail(null);
+                                        }
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-slate-950 text-[11px] font-bold cursor-pointer whitespace-nowrap shrink-0"
+                                    >
+                                      Confirmar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmEliminateEmail(null)}
+                                      className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={isUpdatingPlayer || isChampion}
+                                    onClick={() => {
+                                      sounds.playBlip();
+                                      setConfirmEliminateEmail(row.email);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900/80 border border-rose-500/40 text-rose-300 text-[11px] font-semibold cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-40"
+                                  >
+                                    <UserX className="w-3.5 h-3.5" />
+                                    <span>
+                                      {isUpdatingPlayer ? 'Salvando...' : 'Eliminar Colaborador'}
+                                    </span>
+                                  </button>
                                 )}
                               </td>
                             </tr>
@@ -1730,6 +1627,32 @@ function doGet(e) {
             </div>
           );
         })()}
+
+        {/* ABA 6: AVALIAÇÃO DA GRANDE FINAL (19/11 - 1 A 5 ESTRELAS) */}
+        {activeTab === 'evaluation' && (
+          <Day19EvaluationTab
+            webhookUrl={webhookUrl}
+            attempts={attempts}
+            scenarios={day19Scenarios}
+            evaluations={day19Evaluations}
+            remoteConfig={remoteConfig}
+            onEvaluationsChange={setDay19Evaluations}
+            onConfigChange={(nextCfg) => {
+              setRemoteConfig(nextCfg);
+              setChampionRelease(getEffectiveChampionConfig(nextCfg));
+            }}
+            onRefreshAll={handleSyncSheets}
+            onOpenChampionPreview={() => {
+              sounds.playWhistle();
+              onStartTestGame({
+                active: true,
+                simulatedDate: '2026-11-20',
+                ignoreSchedule: true,
+                previewChampion: true,
+              });
+            }}
+          />
+        )}
       </main>
 
       {/* Modal: Visualização Completa de Respostas Abertas (VAR 18/11 & Chute de Ouro 19/11) */}

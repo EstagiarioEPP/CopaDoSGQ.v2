@@ -10,6 +10,7 @@ import {
   buildDay17SpeedRanking,
   isGoldenKickDay,
   getEffectiveChampionConfig,
+  isEliminatedParticipant,
 } from '../competition/competitionEngine';
 import { storageService } from '../services/storageService';
 import { sheetsSyncService } from '../services/sheetsSyncService';
@@ -20,6 +21,7 @@ interface StartScreenProps {
   onUpdatePlayer: (info: PlayerInfo) => void;
   onStartGame: () => void;
   onEliminated?: (info: { name: string; email: string; eliminatedDate?: string }) => void;
+  onChampionLogin?: (info: { name: string; email: string; championName?: string }) => void;
   onOpenChampionScreen?: () => void;
   totalQuestions: number;
   testMode?: TestModeConfig | null;
@@ -31,6 +33,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   onUpdatePlayer,
   onStartGame,
   onEliminated,
+  onChampionLogin,
   onOpenChampionScreen,
   totalQuestions,
   testMode,
@@ -49,6 +52,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     playerInfo.email || (isTestMode ? 'teste.gestao@acim.com.br' : '')
   );
   const [errorMsg, setErrorMsg] = useState('');
+  const [isVerifyingLogin, setIsVerifyingLogin] = useState(false);
 
   // Ranking de tempo de resposta da rodada de 17/11
   const [day17Ranking, setDay17Ranking] = useState<Day17RankingEntry[]>(() =>
@@ -72,12 +76,17 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    const loadRanking = async () => {
+    const loadInitialRemoteData = async () => {
       setLoadingRanking(true);
       try {
-        const result = await sheetsSyncService.fetchAllAttempts(storageService.getWebhookUrl());
+        const webhook = storageService.getWebhookUrl();
+        const [result, remoteCfg] = await Promise.all([
+          sheetsSyncService.fetchAllAttempts(webhook),
+          sheetsSyncService.fetchRemoteConfig(webhook),
+        ]);
         if (!cancelled) {
           setDay17Ranking(buildDay17SpeedRanking(result.attempts));
+          setChampionConfig(getEffectiveChampionConfig(remoteCfg));
         }
       } catch {
         if (!cancelled) {
@@ -89,22 +98,14 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         }
       }
     };
-    loadRanking();
+    loadInitialRemoteData();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (isOutsideHours) {
-      sounds.playBuzzer();
-      setErrorMsg(
-        `Fora do horário oficial de cobranças (agora são ${timeInfo.formattedTime}). O jogo fica liberado das 08:00 às 18:00 (horário de Brasília).`
-      );
-      return;
-    }
 
     if (!name.trim()) {
       setErrorMsg('Por favor, informe seu nome para entrar em campo.');
@@ -117,31 +118,76 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const webhookUrl = storageService.getWebhookUrl();
 
-    const attempts = storageService.getAttempts();
-    const check = canParticipantPlayToday(cleanEmail, effectiveDate, attempts, {
-      isTestMode,
-    });
-
-    if (!check.allowed) {
-      sounds.playBuzzer();
-      if (check.isEliminated && onEliminated) {
-        onUpdatePlayer({ name: name.trim(), email: cleanEmail });
-        onEliminated({
-          name: name.trim(),
-          email: cleanEmail,
-          eliminatedDate: check.eliminatedDate,
-        });
-        return;
-      }
-      setErrorMsg(check.reason || 'Participação não autorizada.');
+    if (isTestMode) {
+      setErrorMsg('');
+      onUpdatePlayer({ name: name.trim(), email: cleanEmail });
+      sounds.playWhistle();
+      onStartGame();
       return;
     }
 
+    setIsVerifyingLogin(true);
     setErrorMsg('');
-    onUpdatePlayer({ name: name.trim(), email: cleanEmail });
-    sounds.playWhistle();
-    onStartGame();
+
+    try {
+      const [remoteCfg, syncRes] = await Promise.all([
+        sheetsSyncService.fetchRemoteConfig(webhookUrl),
+        sheetsSyncService.fetchAllAttempts(webhookUrl),
+      ]);
+      const latestAttempts = syncRes.attempts || storageService.getAttempts();
+
+      // 1. Se o e-mail logado for o do Campeão Coroado no backend, dispara celebração imediatamente!
+      if (
+        remoteCfg.isChampionReleased &&
+        remoteCfg.championEmail &&
+        cleanEmail === remoteCfg.championEmail.toLowerCase()
+      ) {
+        onUpdatePlayer({ name: name.trim(), email: cleanEmail });
+        if (onChampionLogin) {
+          onChampionLogin({
+            name: name.trim(),
+            email: cleanEmail,
+            championName: remoteCfg.championName || name.trim(),
+          });
+          return;
+        }
+      }
+
+      // 2. Verificação estrita de eliminação (dinâmica no Google Sheets ou matriz oficial)
+      const check = canParticipantPlayToday(cleanEmail, effectiveDate, latestAttempts, {
+        isTestMode: false,
+        remoteConfig: remoteCfg,
+      });
+
+      if (isEliminatedParticipant(cleanEmail, remoteCfg) || check.isEliminated) {
+        sounds.playBuzzer();
+        onUpdatePlayer({ name: name.trim(), email: cleanEmail });
+        if (onEliminated) {
+          onEliminated({
+            name: name.trim(),
+            email: cleanEmail,
+            eliminatedDate: check.eliminatedDate,
+          });
+          return;
+        }
+      }
+
+      // 3. Validação normal de horário, autorização e tentativa única
+      if (!check.allowed) {
+        sounds.playBuzzer();
+        setErrorMsg(check.reason || 'Participação não autorizada.');
+        return;
+      }
+
+      setErrorMsg('');
+      onUpdatePlayer({ name: name.trim(), email: cleanEmail });
+      sounds.playWhistle();
+      onStartGame();
+    } finally {
+      setIsVerifyingLogin(false);
+    }
   };
 
   return (
@@ -268,7 +314,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             id="player-name"
             type="text"
             required
-            disabled={isOutsideHours}
+            disabled={isVerifyingLogin}
             value={name}
             onChange={(e) => {
               setName(e.target.value);
@@ -287,7 +333,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             id="player-email"
             type="email"
             required
-            disabled={isOutsideHours}
+            disabled={isVerifyingLogin}
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -297,9 +343,18 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             className="w-full px-4 py-3 bg-slate-950 border-2 border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-hidden focus:border-amber-400 transition-colors text-sm sm:text-base font-medium disabled:opacity-50"
           />
           <span className="text-[11px] text-slate-400 mt-1 block">
-            Informe seu e-mail corporativo @acim.com.br para entrar em campo.
+            Informe seu e-mail corporativo @acim.com.br para validar sua situação na Copa.
           </span>
         </div>
+
+        {isOutsideHours && (
+          <div className="p-3 bg-slate-950/90 border border-slate-700 rounded-xl text-slate-300 text-xs flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              Horário oficial das cobranças: 08:00 às 18:00 (agora são {timeInfo.formattedTime}). Entre com seu e-mail para consultar status ou resultado.
+            </span>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="p-3 bg-rose-950/60 border border-rose-500/50 rounded-xl text-rose-300 text-xs font-semibold flex items-center gap-2 animate-shake">
@@ -310,17 +365,13 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
         <button
           type="submit"
-          disabled={isOutsideHours}
-          className={`w-full py-4 px-6 font-['Press_Start_2P'] text-xs sm:text-sm rounded-xl font-bold tracking-wider shadow-lg transition-all flex items-center justify-center gap-3 mt-2 ${
-            isOutsideHours
-              ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-              : 'bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 hover:shadow-amber-400/25 transform hover:-translate-y-0.5 cursor-pointer'
-          }`}
+          disabled={isVerifyingLogin}
+          className="w-full py-4 px-6 font-['Press_Start_2P'] text-xs sm:text-sm rounded-xl font-bold tracking-wider shadow-lg transition-all flex items-center justify-center gap-3 mt-2 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 hover:shadow-amber-400/25 transform hover:-translate-y-0.5 cursor-pointer disabled:opacity-60"
         >
-          {isOutsideHours ? (
+          {isVerifyingLogin ? (
             <>
-              <Clock className="w-4 h-4" />
-              <span>FORA DO HORÁRIO (08:00 ÀS 18:00)</span>
+              <Clock className="w-4 h-4 animate-spin" />
+              <span>VERIFICANDO STATUS...</span>
             </>
           ) : (
             <>
@@ -328,8 +379,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({
               <span>
                 {isFinalGoldenKick
                   ? isTestMode
-                    ? 'INICIAR TESTE (3 CENÁRIOS)'
-                    : 'ENTRAR NA FINAL (3 CENÁRIOS)'
+                    ? `INICIAR TESTE (${totalQuestions} CENÁRIOS)`
+                    : `ENTRAR NA FINAL (${totalQuestions} CENÁRIOS)`
                   : isTestMode
                   ? `INICIAR TESTE (${totalQuestions} CHUTES)`
                   : `ENTRAR EM CAMPO (${totalQuestions} CHUTES)`}

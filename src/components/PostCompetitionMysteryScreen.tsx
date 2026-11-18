@@ -5,6 +5,7 @@ import { sounds } from '../sound';
 interface PostCompetitionMysteryScreenProps {
   onExitPreview?: () => void;
   exitLabel?: string;
+  onCheckEmail?: () => void;
 }
 
 interface LaneState {
@@ -62,6 +63,7 @@ const PixelBall: React.FC<{ className?: string }> = ({ className = '' }) => (
 export const PostCompetitionMysteryScreen: React.FC<PostCompetitionMysteryScreenProps> = ({
   onExitPreview,
   exitLabel = 'Voltar ao Painel',
+  onCheckEmail,
 }) => {
   const [laneA, setLaneA] = useState<LaneState>({ phase: 'idle', corner: 'right', goals: 1 });
   const [laneB, setLaneB] = useState<LaneState>({ phase: 'idle', corner: 'left', goals: 1 });
@@ -216,19 +218,33 @@ export const PostCompetitionMysteryScreen: React.FC<PostCompetitionMysteryScreen
         {renderMysteryPitch(laneB, 'Finalista Misterioso 2', true)}
       </div>
 
-      {onExitPreview && (
-        <div className="flex justify-center pt-1">
-          <button
-            type="button"
-            onClick={() => {
-              sounds.playBlip();
-              onExitPreview();
-            }}
-            className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-colors cursor-pointer inline-flex items-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>{exitLabel}</span>
-          </button>
+      {(onExitPreview || onCheckEmail) && (
+        <div className="flex flex-wrap justify-center gap-3 pt-1">
+          {onCheckEmail && (
+            <button
+              type="button"
+              onClick={() => {
+                sounds.playBlip();
+                onCheckEmail();
+              }}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition-colors cursor-pointer"
+            >
+              Consultar meu e-mail
+            </button>
+          )}
+          {onExitPreview && (
+            <button
+              type="button"
+              onClick={() => {
+                sounds.playBlip();
+                onExitPreview();
+              }}
+              className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-colors cursor-pointer inline-flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>{exitLabel}</span>
+            </button>
+          )}
         </div>
       )}
     </div>

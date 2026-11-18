@@ -1,5 +1,14 @@
-import { Question, AttemptRecord, ParticipantMatrixRow, GoldenKickScenario, ChampionConfig, Day17RankingEntry } from '../types';
-import { storageService } from '../services/storageService';
+import {
+  Question,
+  AttemptRecord,
+  ParticipantMatrixRow,
+  GoldenKickScenario,
+  GoldenKickField,
+  ChampionConfig,
+  Day17RankingEntry,
+  RemoteCompetitionConfig,
+} from '../types';
+import { storageService, DEFAULT_DAY19_SCENARIOS } from '../services/storageService';
 
 /**
  * MOTOR OFICIAL DA COPA DO SGQ ACIM (NOVEMBRO DE 2026)
@@ -8,8 +17,8 @@ import { storageService } from '../services/storageService';
  * 2. 4 Dias oficiais (16 a 19 de novembro de 2026 — 20/11 feriado removido)
  * 3. Fuso horário oficial: America/Sao_Paulo
  * 4. 1 tentativa por participante por dia (08:00 às 18:00)
- * 5. Eliminação diária + Rodadas Especiais (18/11 VAR obrigatório e 19/11 Chute de Ouro)
- * 6. Grande Campeão liberado exclusivamente após acionamento manual no Painel de Gestão
+ * 5. Eliminação dinâmica via Painel Admin + Rodadas Especiais (18/11 VAR e 19/11 Chute de Ouro)
+ * 6. Grande Campeão liberado exclusivamente após coroação manual no Painel de Gestão
  */
 
 export const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo';
@@ -35,9 +44,18 @@ export const CHAMPION_CONFIG: ChampionConfig = {
   championTitle: 'GRANDE CAMPEÃO DA COPA DO SGQ ACIM 2026',
 };
 
-export function getEffectiveChampionConfig(): ChampionConfig {
+export function getEffectiveChampionConfig(remoteConfig?: RemoteCompetitionConfig): ChampionConfig {
+  const cfg = remoteConfig || storageService.getRemoteConfig();
+  if (cfg.isChampionReleased && cfg.championEmail) {
+    return {
+      isReleased: true,
+      championEmail: cfg.championEmail,
+      championName: cfg.championName || cfg.championEmail.split('@')[0],
+      championTitle: 'GRANDE CAMPEÃO DA COPA DO SGQ ACIM 2026',
+    };
+  }
   const stored = storageService.getChampionRelease();
-  if (stored) {
+  if (stored && stored.isReleased) {
     return stored;
   }
   return CHAMPION_CONFIG;
@@ -60,50 +78,50 @@ export function isGoldenKickDay(dateStr: string): boolean {
   return dateStr === GOLDEN_KICK_DATE;
 }
 
-// 3 CENÁRIOS PRÁTICOS DA GRANDE FINAL (19/11 — CHUTE DE OURO / CENÁRIO CEGO)
-export const GOLDEN_KICK_SCENARIOS: GoldenKickScenario[] = [
-  {
-    id: 'FINAL-01',
-    title: 'Cenário 1 — Desorganização, Dados Perdidos & Ocorrência no SIG Sistem',
-    themesCrossed: ['5S & Gestão da Informação', 'Não Conformidades', 'Atendimento', 'SIG Sistem'],
-    context:
-      'Durante o atendimento a um associado, um colaborador percebe que documentos importantes ficaram espalhados na mesa sem arquivamento padrão, uma versão desatualizada de formulário foi utilizada e uma reclamação anterior do mesmo associado não havia sido registrada nem tratada no SIG Sistem.',
-    fields: {
-      diagnosticoLabel: '1. Diagnóstico e temas do SGQ violados',
-      contencaoLabel: '2. Contenção imediata no SIG Sistem / ACIM',
-      acaoPreventivaLabel: '3. Ação preventiva e melhoria sistêmica',
-    },
-  },
-  {
-    id: 'FINAL-02',
-    title: 'Cenário 2 — Meta Abaixo do Esperado, Dependência de Pessoa & Propósito',
-    themesCrossed: ['Objetivos e Indicadores', 'Gestão de Riscos', 'Missão, Visão, Valores & Política', 'SIG Sistem'],
-    context:
-      'Um indicador estratégico do setor fechou 3 meses seguidos abaixo da meta. Ao investigar, a equipe descobriu que apenas uma pessoa sabia gerar os dados no SIG Sistem, saiu de férias sem deixar manual atualizado, e ninguém havia registrado esse risco ou revisado os compromissos da Política da Qualidade.',
-    fields: {
-      diagnosticoLabel: '1. Diagnóstico e temas do SGQ violados',
-      contencaoLabel: '2. Contenção imediata no SIG Sistem / ACIM',
-      acaoPreventivaLabel: '3. Ação preventiva e melhoria sistêmica',
-    },
-  },
-  {
-    id: 'FINAL-03',
-    title: 'Cenário 3 — Mudança Sem Aviso Entre Setores & Dados Pessoais (LGPD)',
-    themesCrossed: ['Visão Sistêmica & Melhoria Contínua', 'Atendimento', 'LGPD', 'SIG Sistem'],
-    context:
-      'Um setor alterou o fluxo de encaminhamento de fichas cadastrais de associados no SIG Sistem sem avisar o departamento vizinho e passou a compartilhar uma planilha com CPF, telefone e e-mail em grupo aberto de mensagens para agilizar os retornos.',
-    fields: {
-      diagnosticoLabel: '1. Diagnóstico e temas do SGQ violados',
-      contencaoLabel: '2. Contenção imediata no SIG Sistem / ACIM',
-      acaoPreventivaLabel: '3. Ação preventiva e melhoria sistêmica',
-    },
-  },
-];
+export const GOLDEN_KICK_SCENARIOS: GoldenKickScenario[] = DEFAULT_DAY19_SCENARIOS;
 
-export function isEliminatedParticipant(email: string | undefined | null): boolean {
+export function getScenarioFields(scenario: GoldenKickScenario): GoldenKickField[] {
+  if (Array.isArray(scenario.customFields) && scenario.customFields.length > 0) {
+    return scenario.customFields;
+  }
+  if (scenario.fields) {
+    return [
+      {
+        id: 'diagnostico',
+        label: scenario.fields.diagnosticoLabel || '1. Diagnóstico e temas do SGQ violados',
+        placeholder: 'Identifique os pontos críticos e os pilares do SGQ envolvidos...',
+      },
+      {
+        id: 'contencao',
+        label: scenario.fields.contencaoLabel || '2. Contenção imediata no SIG Sistem / ACIM',
+        placeholder: 'O que fazer imediatamente na rotina e dentro do SIG Sistem...',
+      },
+      {
+        id: 'acaoPreventiva',
+        label: scenario.fields.acaoPreventivaLabel || '3. Ação preventiva e melhoria sistêmica',
+        placeholder: 'Como evitar que o problema se repita entre os setores...',
+      },
+    ];
+  }
+  return [
+    {
+      id: 'resposta',
+      label: 'Resposta prática',
+      placeholder: 'Descreva sua análise completa...',
+    },
+  ];
+}
+
+export function isEliminatedParticipant(
+  email: string | undefined | null,
+  remoteConfig?: RemoteCompetitionConfig
+): boolean {
   if (!email) return false;
   const clean = email.trim().toLowerCase();
-  return ELIMINATED_PARTICIPANTS.some((p) => p.toLowerCase() === clean);
+  const staticMatch = ELIMINATED_PARTICIPANTS.some((p) => p.toLowerCase() === clean);
+  if (staticMatch) return true;
+  const cfg = remoteConfig || storageService.getRemoteConfig();
+  return cfg.eliminatedEmails.some((p) => p.toLowerCase() === clean);
 }
 
 // 4 DIAS OFICIAIS DA COMPETIÇÃO (16/11 A 19/11 — SEM DIA 20/11 FERIADO)
@@ -228,7 +246,10 @@ export function getCompetitionTimeline(currentDate: string = getSaoPauloDateStri
  * IMPORTANTE: Nunca promove automaticamente ninguém a 'Campeão' — a revelação depende
  * exclusivamente do acionamento manual no Painel de Gestão.
  */
-export function calculateCompetitionMatrix(attempts: AttemptRecord[]): ParticipantMatrixRow[] {
+export function calculateCompetitionMatrix(
+  attempts: AttemptRecord[],
+  remoteConfig?: RemoteCompetitionConfig
+): ParticipantMatrixRow[] {
   const matrix: Record<string, ParticipantMatrixRow> = {};
 
   AUTHORIZED_PARTICIPANTS.forEach((email) => {
@@ -260,8 +281,6 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
     }
   });
 
-  // Eliminação diária automática apenas nas rodadas objetivas (16/11, 17/11 e 18/11)
-  // Dia 19/11 é avaliação cega manual da banca do SGQ (Chute de Ouro).
   let activeEmails = [...AUTHORIZED_PARTICIPANTS];
 
   COMPETITION_DAYS.forEach((day) => {
@@ -288,11 +307,14 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
     }
   });
 
-  ELIMINATED_PARTICIPANTS.forEach((elimEmail) => {
+  const cfg = remoteConfig || storageService.getRemoteConfig();
+  const allManualEliminations = [...ELIMINATED_PARTICIPANTS, ...cfg.eliminatedEmails];
+
+  allManualEliminations.forEach((elimEmail) => {
     const clean = elimEmail.trim().toLowerCase();
     if (matrix[clean] && matrix[clean].status !== 'Eliminado') {
       matrix[clean].status = 'Eliminado';
-      matrix[clean].eliminatedDate = matrix[clean].eliminatedDate || 'Mata-Mata';
+      matrix[clean].eliminatedDate = matrix[clean].eliminatedDate || 'Gestão';
       activeEmails = activeEmails.filter((e) => e.toLowerCase() !== clean);
     }
   });
@@ -301,8 +323,8 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
     row.total = Object.values(row.dias).reduce<number>((acc, score) => acc + (score || 0), 0);
   });
 
-  // Marca como 'Campeão' na matriz SOMENTE se o gestor já tiver liberado oficialmente no Painel
-  const effectiveChampion = getEffectiveChampionConfig();
+  // Marca como 'Campeão' na matriz SOMENTE se o gestor já tiver coroado/liberado no Painel
+  const effectiveChampion = getEffectiveChampionConfig(cfg);
   if (effectiveChampion.isReleased && effectiveChampion.championEmail) {
     const champRow = matrix[effectiveChampion.championEmail.toLowerCase()];
     if (champRow) {
@@ -317,12 +339,15 @@ export function calculateCompetitionMatrix(attempts: AttemptRecord[]): Participa
  * Sugere automaticamente o vencedor da matriz de pontuação para o botão de liberação
  * no Painel de Gestão, identificando empates para decisão manual da banca.
  */
-export function getSuggestedChampionCandidates(attempts: AttemptRecord[]): {
+export function getSuggestedChampionCandidates(
+  attempts: AttemptRecord[],
+  remoteConfig?: RemoteCompetitionConfig
+): {
   autoWinner: ParticipantMatrixRow | null;
   tiedCandidates: ParticipantMatrixRow[];
   activeFinalists: ParticipantMatrixRow[];
 } {
-  const matrix = calculateCompetitionMatrix(attempts);
+  const matrix = calculateCompetitionMatrix(attempts, remoteConfig);
   const activeFinalists = matrix.filter((r) => r.status !== 'Eliminado');
 
   if (activeFinalists.length === 0) {
@@ -359,7 +384,7 @@ export function canParticipantPlayToday(
   email: string,
   dateStr: string,
   attempts: AttemptRecord[],
-  options?: { bypassTimeCheck?: boolean; isTestMode?: boolean }
+  options?: { bypassTimeCheck?: boolean; isTestMode?: boolean; remoteConfig?: RemoteCompetitionConfig }
 ): {
   allowed: boolean;
   reason?: string;
@@ -369,17 +394,6 @@ export function canParticipantPlayToday(
 } {
   if (options?.isTestMode) {
     return { allowed: true };
-  }
-
-  if (!options?.bypassTimeCheck) {
-    const timeInfo = getSaoPauloTimeInfo();
-    if (!timeInfo.isWithinHours) {
-      return {
-        allowed: false,
-        isOutsideHours: true,
-        reason: `⏰ Fora do horário oficial de cobranças (agora são ${timeInfo.formattedTime}). As rodadas ficam abertas exclusivamente das 08:00 às 18:00 (horário de Brasília).`,
-      };
-    }
   }
 
   if (!email || !email.trim()) {
@@ -395,24 +409,35 @@ export function canParticipantPlayToday(
     };
   }
 
-  if (isEliminatedParticipant(cleanEmail)) {
+  if (isEliminatedParticipant(cleanEmail, options?.remoteConfig)) {
     return {
       allowed: false,
       isEliminated: true,
-      eliminatedDate: 'Fase Anterior',
-      reason: 'Você foi eliminado do mata-mata e não pode disputar esta rodada.',
+      eliminatedDate: 'Mata-Mata',
+      reason: 'Você foi eliminado do mata-mata, mas mantenha-se conectado para ver quem será o grande campeão no Momento ACIM!',
     };
   }
 
-  const matrix = calculateCompetitionMatrix(attempts);
+  const matrix = calculateCompetitionMatrix(attempts, options?.remoteConfig);
   const participantRow = matrix.find((r) => r.email.toLowerCase() === cleanEmail);
   if (participantRow && participantRow.status === 'Eliminado') {
     return {
       allowed: false,
       isEliminated: true,
       eliminatedDate: participantRow.eliminatedDate || 'dias anteriores',
-      reason: `Você foi eliminado da competição na rodada de ${participantRow.eliminatedDate || 'dias anteriores'} e não pode realizar novas cobranças.`,
+      reason: 'Você foi eliminado do mata-mata, mas mantenha-se conectado para ver quem será o grande campeão no Momento ACIM!',
     };
+  }
+
+  if (!options?.bypassTimeCheck) {
+    const timeInfo = getSaoPauloTimeInfo();
+    if (!timeInfo.isWithinHours) {
+      return {
+        allowed: false,
+        isOutsideHours: true,
+        reason: `⏰ Fora do horário oficial de cobranças (agora são ${timeInfo.formattedTime}). As rodadas ficam abertas exclusivamente das 08:00 às 18:00 (horário de Brasília).`,
+      };
+    }
   }
 
   const alreadyPlayedToday = attempts.some(

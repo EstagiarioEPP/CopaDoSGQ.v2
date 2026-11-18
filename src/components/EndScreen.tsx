@@ -59,10 +59,15 @@ export const EndScreen: React.FC<EndScreenProps> = ({
   const formattedGoldenKickSummary = useMemo(() => {
     if (!isGoldenKick || goldenKickAnswers.length === 0) return '';
     return goldenKickAnswers
-      .map(
-        (ans, idx) =>
-          `[${ans.scenarioId} · Cenário ${idx + 1} (${ans.elapsedTenths.toFixed(1)}s)] Diagnóstico: ${ans.diagnostico} | Contenção: ${ans.contencao} | Preventiva: ${ans.acaoPreventiva}`
-      )
+      .map((ans, idx) => {
+        if (ans.fieldResponses && ans.fieldResponses.length > 0) {
+          const joinedFields = ans.fieldResponses
+            .map((fr) => `${fr.label}: ${fr.value}`)
+            .join(' | ');
+          return `[${ans.scenarioId} · Cenário ${idx + 1} (${ans.elapsedTenths.toFixed(1)}s)] ${joinedFields}`;
+        }
+        return `[${ans.scenarioId} · Cenário ${idx + 1} (${ans.elapsedTenths.toFixed(1)}s)] Diagnóstico: ${ans.diagnostico || ''} | Contenção: ${ans.contencao || ''} | Preventiva: ${ans.acaoPreventiva || ''}`;
+      })
       .join(' || ');
   }, [isGoldenKick, goldenKickAnswers]);
 
@@ -124,6 +129,7 @@ export const EndScreen: React.FC<EndScreenProps> = ({
           : undefined,
         varResponse: cleanVarText || undefined,
         goldenKickSummary: formattedGoldenKickSummary || undefined,
+        goldenKickAnswers: isGoldenKick ? goldenKickAnswers : undefined,
         isPendingManualReview: isGoldenKick,
       });
     }
@@ -175,9 +181,10 @@ export const EndScreen: React.FC<EndScreenProps> = ({
       tempoResposta: tempoRespostaStr || '-',
       varResponse: cleanVarText || '-',
       goldenKickSummary: formattedGoldenKickSummary || '-',
+      goldenKickAnswers: isGoldenKick ? goldenKickAnswers : [],
       isGoldenKick,
       answers: isGoldenKick
-        ? 'Grande Final — 3 Cenários (Avaliação Manual)'
+        ? `Grande Final — ${goldenKickAnswers.length} Cenário(s) (Avaliação Manual)`
         : records
             .map((r, i) => {
               const timeSuffix =
@@ -187,13 +194,14 @@ export const EndScreen: React.FC<EndScreenProps> = ({
             .join(' | '),
     };
 
-    fetch(webhookUrl, {
+    const sep = webhookUrl.includes('?') ? '&' : '?';
+    fetch(`${webhookUrl}${sep}action=submitAttempt`, {
       method: 'POST',
       mode: 'no-cors',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ action: 'submitAttempt', ...payload }),
     })
       .then(() => {
         setWebhookStatus('success');
@@ -295,15 +303,25 @@ export const EndScreen: React.FC<EndScreenProps> = ({
                 <div className="font-bold text-xs text-amber-300">
                   Chute #{idx + 1} · {ans.scenarioTitle}
                 </div>
-                <div className="text-xs text-slate-300">
-                  <strong className="text-slate-200">Diagnóstico:</strong> {ans.diagnostico}
-                </div>
-                <div className="text-xs text-slate-300">
-                  <strong className="text-slate-200">Contenção no SIG Sistem/ACIM:</strong> {ans.contencao}
-                </div>
-                <div className="text-xs text-slate-300">
-                  <strong className="text-slate-200">Ação preventiva:</strong> {ans.acaoPreventiva}
-                </div>
+                {ans.fieldResponses && ans.fieldResponses.length > 0 ? (
+                  ans.fieldResponses.map((fr) => (
+                    <div key={fr.fieldId} className="text-xs text-slate-300">
+                      <strong className="text-slate-200">{fr.label}:</strong> {fr.value}
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    <div className="text-xs text-slate-300">
+                      <strong className="text-slate-200">Diagnóstico:</strong> {ans.diagnostico}
+                    </div>
+                    <div className="text-xs text-slate-300">
+                      <strong className="text-slate-200">Contenção no SIG Sistem/ACIM:</strong> {ans.contencao}
+                    </div>
+                    <div className="text-xs text-slate-300">
+                      <strong className="text-slate-200">Ação preventiva:</strong> {ans.acaoPreventiva}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>

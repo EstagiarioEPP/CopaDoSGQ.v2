@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GoldenKickScenario, GoldenKickAnswer, GameTheme } from '../types';
+import { GoldenKickScenario, GoldenKickAnswer, GoldenKickFieldResponse, GameTheme } from '../types';
 import { PixelGoalkeeper } from './PixelGoalkeeper';
+import { getScenarioFields } from '../competition/competitionEngine';
 import { sounds } from '../sound';
 import { Sparkles, Send, AlertCircle } from 'lucide-react';
 
@@ -18,9 +19,7 @@ export const GoldenKickArena: React.FC<GoldenKickArenaProps> = ({
   onComplete,
 }) => {
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [diagnostico, setDiagnostico] = useState('');
-  const [contencao, setContencao] = useState('');
-  const [acaoPreventiva, setAcaoPreventiva] = useState('');
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [errorMsg, setErrorMsg] = useState('');
   const [isAnimatingKick, setIsAnimatingKick] = useState(false);
   const [collectedAnswers, setCollectedAnswers] = useState<GoldenKickAnswer[]>([]);
@@ -36,15 +35,17 @@ export const GoldenKickArena: React.FC<GoldenKickArenaProps> = ({
   }, [currentIdx, isAnimatingKick]);
 
   const currentScenario = scenarios[currentIdx];
-  const kickAngleCorner = currentIdx % 2 === 0 ? 'B' : 'A'; // Alterna entre ângulo superior direito e esquerdo
+  const currentFields = currentScenario ? getScenarioFields(currentScenario) : [];
+  const kickAngleCorner = currentIdx % 2 === 0 ? 'B' : 'A';
 
   const handleSubmitScenario = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isAnimatingKick) return;
+    if (isAnimatingKick || !currentScenario) return;
 
-    if (!diagnostico.trim() || !contencao.trim() || !acaoPreventiva.trim()) {
+    const missingField = currentFields.find((f) => !(fieldValues[f.id] || '').trim());
+    if (missingField) {
       sounds.playBuzzer();
-      setErrorMsg('Preencha os 3 campos do lance antes de bater o Chute de Ouro!');
+      setErrorMsg('Preencha todos os campos do lance antes de bater o Chute de Ouro!');
       return;
     }
 
@@ -54,12 +55,19 @@ export const GoldenKickArena: React.FC<GoldenKickArenaProps> = ({
     totalSilentTenthsRef.current =
       Math.round((totalSilentTenthsRef.current + elapsedTenths) * 10) / 10;
 
+    const fieldResponses: GoldenKickFieldResponse[] = currentFields.map((f) => ({
+      fieldId: f.id,
+      label: f.label,
+      value: (fieldValues[f.id] || '').trim(),
+    }));
+
     const newAnswer: GoldenKickAnswer = {
       scenarioId: currentScenario.id,
       scenarioTitle: currentScenario.title,
-      diagnostico: diagnostico.trim(),
-      contencao: contencao.trim(),
-      acaoPreventiva: acaoPreventiva.trim(),
+      diagnostico: fieldResponses[0]?.value || '',
+      contencao: fieldResponses[1]?.value || '',
+      acaoPreventiva: fieldResponses[2]?.value || '',
+      fieldResponses,
       elapsedTenths,
     };
 
@@ -71,9 +79,7 @@ export const GoldenKickArena: React.FC<GoldenKickArenaProps> = ({
     window.setTimeout(() => {
       setIsAnimatingKick(false);
       if (currentIdx + 1 < scenarios.length) {
-        setDiagnostico('');
-        setContencao('');
-        setAcaoPreventiva('');
+        setFieldValues({});
         setCurrentIdx((prev) => prev + 1);
       } else {
         sounds.playWhistle();
@@ -90,6 +96,10 @@ export const GoldenKickArena: React.FC<GoldenKickArenaProps> = ({
       ? 'translate(calc(-50% + 148px), -145px) scale(0.45) rotate(720deg)'
       : 'translate(calc(-50% - 148px), -145px) scale(0.45) rotate(-720deg)';
   };
+
+  if (!currentScenario) {
+    return null;
+  }
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-4 animate-in fade-in duration-300">
@@ -231,56 +241,39 @@ export const GoldenKickArena: React.FC<GoldenKickArenaProps> = ({
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-amber-300 mb-1.5">
-                {currentScenario.fields.diagnosticoLabel} <span className="text-rose-400">*</span>
-              </label>
-              <textarea
-                rows={2}
-                disabled={isAnimatingKick}
-                value={diagnostico}
-                onChange={(e) => {
-                  setDiagnostico(e.target.value);
-                  setErrorMsg('');
-                }}
-                placeholder="Identifique os pontos críticos e os pilares do SGQ envolvidos..."
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden"
-              />
-            </div>
+            {currentFields.map((field, fIdx) => {
+              const labelTone =
+                fIdx % 3 === 0
+                  ? 'text-amber-300'
+                  : fIdx % 3 === 1
+                  ? 'text-emerald-300'
+                  : 'text-cyan-300';
+              const borderFocus =
+                fIdx % 3 === 0
+                  ? 'focus:border-amber-400'
+                  : fIdx % 3 === 1
+                  ? 'focus:border-emerald-400'
+                  : 'focus:border-cyan-400';
 
-            <div>
-              <label className="block text-xs font-semibold text-emerald-300 mb-1.5">
-                {currentScenario.fields.contencaoLabel} <span className="text-rose-400">*</span>
-              </label>
-              <textarea
-                rows={2}
-                disabled={isAnimatingKick}
-                value={contencao}
-                onChange={(e) => {
-                  setContencao(e.target.value);
-                  setErrorMsg('');
-                }}
-                placeholder="O que fazer imediatamente na rotina e dentro do SIG Sistem..."
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-emerald-400 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-cyan-300 mb-1.5">
-                {currentScenario.fields.acaoPreventivaLabel} <span className="text-rose-400">*</span>
-              </label>
-              <textarea
-                rows={2}
-                disabled={isAnimatingKick}
-                value={acaoPreventiva}
-                onChange={(e) => {
-                  setAcaoPreventiva(e.target.value);
-                  setErrorMsg('');
-                }}
-                placeholder="Como evitar que o problema se repita entre os setores..."
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden"
-              />
-            </div>
+              return (
+                <div key={field.id}>
+                  <label className={`block text-xs font-semibold ${labelTone} mb-1.5`}>
+                    {field.label} <span className="text-rose-400">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    disabled={isAnimatingKick}
+                    value={fieldValues[field.id] || ''}
+                    onChange={(e) => {
+                      setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }));
+                      setErrorMsg('');
+                    }}
+                    placeholder={field.placeholder || 'Descreva sua resposta prática aplicada à ACIM e ao SIG Sistem...'}
+                    className={`w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 ${borderFocus} rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden`}
+                  />
+                </div>
+              );
+            })}
           </div>
 
           {errorMsg && (
@@ -298,8 +291,8 @@ export const GoldenKickArena: React.FC<GoldenKickArenaProps> = ({
             <Send className="w-4 h-4" />
             <span>
               {currentIdx + 1 < scenarios.length
-                ? `BATER CHUTE DE OURO (${currentIdx + 1}/3)`
-                : 'BATER ÚLTIMO CHUTE DE OURO (3/3)'}
+                ? `BATER CHUTE DE OURO (${currentIdx + 1}/${scenarios.length})`
+                : `BATER ÚLTIMO CHUTE DE OURO (${scenarios.length}/${scenarios.length})`}
             </span>
           </button>
         </form>

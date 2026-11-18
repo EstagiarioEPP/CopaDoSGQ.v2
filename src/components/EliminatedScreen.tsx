@@ -25,20 +25,23 @@ export const EliminatedScreen: React.FC<EliminatedScreenProps> = ({
       </div>
 
       <h2 className="font-['Press_Start_2P'] text-lg sm:text-xl text-rose-400 tracking-wide mb-3 leading-relaxed">
-        VOCÊ ESTÁ FORA DO MATA-MATA!
+        FIM DO MATA-MATA PARA VOCÊ
       </h2>
 
-      <p className="text-sm sm:text-base font-bold text-white mb-2">
-        O juiz apitou o fim da linha para esta temporada, {playerName || 'Jogador'}.
+      <p className="text-sm sm:text-base font-bold text-white mb-3">
+        {playerName || 'Colaborador'}, sua participação nas cobranças foi encerrada.
       </p>
 
-      <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed mb-5">
-        Sua pontuação na rodada anterior ({eliminatedDate || 'Fase de Classificação'}) ficou abaixo da linha de corte do mata-mata. Chuteiras penduradas por aqui, mas obrigado pela participação na Copa do SGQ!
-      </p>
+      <div className="p-4 bg-rose-950/35 border border-rose-500/40 rounded-2xl text-xs sm:text-sm text-rose-100 max-w-lg mx-auto leading-relaxed mb-5 font-medium">
+        Você foi eliminado do mata-mata, mas mantenha-se conectado para ver quem será o grande campeão no Momento ACIM!
+      </div>
 
       <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-400 mb-6 flex items-center justify-center gap-2 font-mono">
         <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
-        <span className="truncate">Participante bloqueado: {playerEmail}</span>
+        <span className="truncate">
+          Acesso às cobranças bloqueado · {playerEmail}
+          {eliminatedDate ? ` · ${eliminatedDate}` : ''}
+        </span>
       </div>
 
       <button
